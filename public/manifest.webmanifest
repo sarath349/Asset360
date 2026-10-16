@@ -1,0 +1,14 @@
+{
+  "name": "AssetPro Technician",
+  "short_name": "AssetPro",
+  "description": "Scan, audit and maintain assets in the field",
+  "start_url": "/m",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#4f46e5",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
