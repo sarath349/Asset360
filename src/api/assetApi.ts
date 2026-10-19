@@ -10,6 +10,7 @@ export interface ApiAsset {
   assetCode: string | null;
   assetName: string | null;
   description: string | null;
+  remarks: string | null;
   categoryId: number | null;
   subCategoryId: number | null;
   assetTypeId: number | null;
@@ -18,15 +19,20 @@ export interface ApiAsset {
   model: string | null;
   purchaseDate: string | null;
   purchaseCost: number | null;
+  currency: string | null;
   vendorId: number | null;
   warrantyStartDate: string | null;
   warrantyEndDate: string | null;
   amcStartDate: string | null;
   amcEndDate: string | null;
   locationId: number | null;
+  subLocationId: number | null;
   departmentId: number | null;
   assignedTo: number | null;
+  custodianEmployeeId: string | null;
   status: string | null;
+  condition: string | null;
+  ownershipType: string | null;
   qrCode: string | null;
   rfidTag: string | null;
   createdDate: string | null;
@@ -462,7 +468,7 @@ export const ASSET_STATUSES = ['In Store', 'Active', 'In Repair', 'Under Mainten
 
 export const USER_ROLES = ['Super Admin', 'Admin', 'Asset Manager', 'Facility Manager', 'Department Manager', 'Technician', 'Auditor', 'Employee'];
 
-export const LOCATION_TYPES = ['Company', 'Site', 'Building', 'Floor', 'Area', 'Room', 'Zone', 'Rack'];
+export const LOCATION_TYPES = ['Company', 'Site', 'Building', 'Floor', 'Area', 'Location', 'Sublocation', 'Room', 'Zone', 'Rack'];
 
 export const CONTRACT_TYPES = ['AMC', 'CMC', 'Warranty', 'Extended Warranty', 'Service', 'Lease'];
 
@@ -473,5 +479,9 @@ export const depreciationMethodLabel = (m?: string | null) => (m ? m.replace(/([
 export const DISPOSAL_METHODS = ['Sale', 'Scrap', 'Recycle', 'Donate', 'Return to Vendor', 'Write-off'];
 
 export const CONDITIONS = ['New', 'Good', 'Fair', 'Poor', 'Damaged'];
+
+export const OWNERSHIP_TYPES = ['Owned', 'Leased', 'Rented', 'Customer Owned', 'Loaned', 'Demo'];
+
+export const CURRENCIES = ['AED', 'USD', 'EUR', 'GBP', 'SAR', 'INR'];
 
 export const userDisplayName = (u?: Pick<ApiUser, 'fullName' | 'username'> | null) => u?.fullName || u?.username || '—';

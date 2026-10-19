@@ -116,6 +116,8 @@ export default function AssetDetailPage() {
           <div className="hero-main">
             <div className="row wrap" style={{ gap: 8 }}>
               <StatusBadge status={a.status || undefined} />
+              {a.condition && <Badge color="slate">{a.condition}</Badge>}
+              {a.ownershipType && <Badge color="blue">{a.ownershipType}</Badge>}
             </div>
             <div className="kv-grid mt">
               <div className="kv">
@@ -127,12 +129,16 @@ export default function AssetDetailPage() {
                 <div className="v">{names.location(a.locationId) || '—'}</div>
               </div>
               <div className="kv">
+                <div className="k">Sublocation</div>
+                <div className="v">{names.location(a.subLocationId) || '—'}</div>
+              </div>
+              <div className="kv">
                 <div className="k">Department</div>
                 <div className="v">{names.department(a.departmentId) || '—'}</div>
               </div>
               <div className="kv">
                 <div className="k">Purchase cost</div>
-                <div className="v">{money(a.purchaseCost)}</div>
+                <div className="v">{a.purchaseCost == null ? '—' : `${a.currency || ''} ${Number(a.purchaseCost).toLocaleString('en-US')}`.trim()}</div>
               </div>
               <div className="kv">
                 <div className="k">Warranty</div>
@@ -178,14 +184,18 @@ export default function AssetDetailPage() {
                 ['Category', category],
                 ['Subcategory', subCategory],
                 ['Asset type', assetType],
+                ['Condition', a.condition],
+                ['Ownership type', a.ownershipType],
+                ['Custodian employee ID', a.custodianEmployeeId ? <span className="mono">{a.custodianEmployeeId}</span> : null],
                 ['Registered on', dateTime(a.createdDate)],
                 ['Last updated', a.updatedDate ? dateTime(a.updatedDate) : null],
               ]}
             />
-            {a.description && (
+            {(a.description || a.remarks) && (
               <>
                 <div className="divider" />
-                <div className="small muted">{a.description}</div>
+                {a.description && <div className="small muted">{a.description}</div>}
+                {a.remarks && <div className="small muted mt-sm"><b>Remarks:</b> {a.remarks}</div>}
               </>
             )}
           </Card>
@@ -194,7 +204,8 @@ export default function AssetDetailPage() {
               <KV
                 items={[
                   ['Purchase date', date(a.purchaseDate)],
-                  ['Purchase cost', money(a.purchaseCost)],
+                  ['Purchase cost', a.purchaseCost == null ? null : `${a.currency || ''} ${Number(a.purchaseCost).toLocaleString('en-US')}`.trim()],
+                  ['Currency', a.currency],
                   ['Warranty', a.warrantyStartDate || a.warrantyEndDate ? `${date(a.warrantyStartDate)} → ${date(a.warrantyEndDate)}` : null],
                   ['AMC', a.amcStartDate || a.amcEndDate ? `${date(a.amcStartDate)} → ${date(a.amcEndDate)}` : null],
                 ]}

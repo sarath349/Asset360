@@ -2,7 +2,7 @@ import { ReactNode, useMemo, useRef, useState } from 'react';
 import { ChevronDown, X } from 'lucide-react';
 import { ApiAsset, assetApi } from '../api/assetApi';
 import { useClickOutside, useFetch } from '../lib/hooks';
-import { buildTree, flatten, pathOf } from '../lib/tree';
+import { buildTree, descendantIds, flatten, pathOf } from '../lib/tree';
 import { useBranch } from '../context/BranchContext';
 import { useData } from '../context/DataContext';
 
@@ -95,23 +95,36 @@ export function SearchSelect({
   );
 }
 
-export function LocationPicker({ value, onChange, placeholder = 'Select location…', types }: { value?: string | null; onChange: (v: string | null) => void; placeholder?: string; types?: string[] }) {
+export function LocationPicker({
+  value,
+  onChange,
+  placeholder = 'Select location…',
+  types,
+  underId,
+}: {
+  value?: string | null;
+  onChange: (v: string | null) => void;
+  placeholder?: string;
+  types?: string[];
+  /** When set, only show this location and its descendants. */
+  underId?: string | null;
+}) {
   const { locations: all } = useData();
   const { scopeIds } = useBranch();
   const locations = useMemo(() => (scopeIds ? all.filter((l) => scopeIds.has(l._id) || l._id === value) : all), [all, scopeIds, value]);
-  const options = useMemo(
-    () =>
-      flatten(buildTree(locations))
-        .filter((n) => !types || types.includes(n.item.type.toLowerCase()))
-        .map((n) => ({
-          value: n.item._id,
-          label: n.item.name,
-          depth: n.depth,
-          sub: pathOf(n.item.parent, locations) || undefined,
-          badge: n.item.type ? <span className="type-pill tone-slate">{n.item.type}</span> : undefined,
-        })),
-    [locations, types]
-  );
+  const options = useMemo(() => {
+    const allowed = underId ? new Set(descendantIds(underId, locations)) : null;
+    return flatten(buildTree(locations))
+      .filter((n) => !types || types.includes(n.item.type.toLowerCase()))
+      .filter((n) => !allowed || allowed.has(n.item._id) || n.item._id === value)
+      .map((n) => ({
+        value: n.item._id,
+        label: n.item.name,
+        depth: n.depth,
+        sub: pathOf(n.item.parent, locations) || undefined,
+        badge: n.item.type ? <span className="type-pill tone-slate">{n.item.type}</span> : undefined,
+      }));
+  }, [locations, types, underId, value]);
   return <SearchSelect options={options} value={value} onChange={onChange} placeholder={placeholder} />;
 }
 

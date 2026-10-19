@@ -79,11 +79,23 @@ export default function DepreciationPage() {
 
   const recalc = async (ids: number[]) => {
     setBusy(true);
-    let failed = 0;
-    for (const id of ids) await depreciationApi.calculate(id).catch(() => (failed += 1));
+    const errors: string[] = [];
+    for (const id of ids) {
+      try {
+        await depreciationApi.calculate(id);
+      } catch (err) {
+        errors.push(err instanceof Error ? err.message : 'Calculation failed');
+      }
+    }
     setBusy(false);
-    if (failed) toast.error(`${failed} of ${ids.length} calculations failed`);
-    else toast.success(ids.length === 1 ? 'Recalculated' : `Recalculated ${ids.length} assets`);
+    if (errors.length) {
+      const unique = [...new Set(errors)];
+      if (ids.length === 1) toast.error(unique[0]);
+      else if (unique.length === 1) toast.error(`${errors.length} of ${ids.length}: ${unique[0]}`);
+      else toast.error(`${errors.length} of ${ids.length} failed. ${unique[0]}`);
+    } else {
+      toast.success(ids.length === 1 ? 'Recalculated' : `Recalculated ${ids.length} assets`);
+    }
     reload();
   };
 

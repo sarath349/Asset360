@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeftRight, History, Pencil, Plus, Printer, QrCode, Radio, ScanLine, ShieldCheck, Tag, Wrench } from 'lucide-react';
-import { ApiAsset, assetApi, ASSET_STATUSES, assetTypeApi, ApiAssetType, AssignmentAction } from '../api/assetApi';
+import { ApiAsset, assetApi, ASSET_STATUSES, assetTypeApi, ApiAssetType, AssignmentAction, CONDITIONS, CURRENCIES, OWNERSHIP_TYPES } from '../api/assetApi';
 import { useAuth } from '../context/AuthContext';
 import { useBranch } from '../context/BranchContext';
 import { useData, useNames } from '../context/DataContext';
 import { useToast } from '../context/ToastContext';
 import { cachedAssets, extractCode, findAsset, loadAssets } from '../lib/assetLookup';
 import { nextAssetCode, nextSerialNumber } from '../lib/assetCodes';
-import { date, daysUntil, money, toInputDate } from '../lib/format';
+import { date, daysUntil, getCurrency, money, toInputDate } from '../lib/format';
 import { useFetch } from '../lib/hooks';
 import { printLabels } from '../lib/labels';
 import { pathOf } from '../lib/tree';
@@ -156,21 +156,27 @@ export function MAsset() {
           <Row k="Brand / model" v={[a.brand, a.model].filter(Boolean).join(' · ') || '—'} />
           <Row k="Category" v={[cat('c', a.categoryId), cat('s', a.subCategoryId), cat('t', a.assetTypeId)].filter(Boolean).join(' › ') || '—'} />
           <Row k="Status" v={<StatusBadge status={a.status || undefined} />} />
+          <Row k="Condition" v={a.condition || '—'} />
+          <Row k="Ownership" v={a.ownershipType || '—'} />
           <Row k="Warranty" v={<Expiry d={a.warrantyEndDate} label="Warranty" />} />
           <Row k="AMC" v={<Expiry d={a.amcEndDate} label="AMC" />} />
+          {a.description && <Row k="Description" v={a.description} />}
+          {a.remarks && <Row k="Remarks" v={a.remarks} />}
         </div>
 
         <div className="m-section-title">Location & custody</div>
         <div className="m-card">
           <Row k="Location" v={where || '—'} />
+          <Row k="Sublocation" v={names.location(a.subLocationId) || '—'} />
           <Row k="Department" v={names.department(a.departmentId) || '—'} />
           <Row k="Assigned to" v={a.assignedTo ? names.employee(a.assignedTo) : 'In store / unassigned'} />
+          <Row k="Custodian ID" v={a.custodianEmployeeId ? <span className="mono">{a.custodianEmployeeId}</span> : '—'} />
         </div>
 
         <div className="m-section-title">Purchase & tags</div>
         <div className="m-card">
           <Row k="Purchased" v={a.purchaseDate ? date(a.purchaseDate) : '—'} />
-          <Row k="Cost" v={a.purchaseCost ? money(a.purchaseCost) : '—'} />
+          <Row k="Cost" v={a.purchaseCost == null ? '—' : `${a.currency || ''} ${Number(a.purchaseCost).toLocaleString('en-US')}`.trim()} />
           <Row k={<><QrCode size={12} /> QR value</>} v={<span className="mono">{a.qrCode || '—'}</span>} />
           <Row k={<><Radio size={12} /> RFID</>} v={<span className="mono">{a.rfidTag || '—'}</span>} />
         </div>
@@ -238,9 +244,9 @@ export function MAssetForm() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const toast = useToast();
-  const { categories } = useData();
+  const { categories, employees } = useData();
   const { activeBranchId } = useBranch();
-  const [f, setF] = useState<Partial<ApiAsset>>({ status: 'In Store' });
+  const [f, setF] = useState<Partial<ApiAsset>>({ status: 'In Store', condition: 'New', ownershipType: 'Owned', currency: getCurrency() });
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
   const set = <K extends keyof ApiAsset>(k: K, v: ApiAsset[K] | null) => setF((p) => ({ ...p, [k]: v }));
@@ -320,16 +326,57 @@ export function MAssetForm() {
             <Field label="Serial number"><CodeField value={f.serialNumber || ''} onChange={(v) => set('serialNumber', v)} mono={false} /></Field>
             <Field label="Asset code" hint={isEdit ? undefined : 'Blank = auto'}><input className="input mono" value={f.assetCode || ''} onChange={(e) => set('assetCode', e.target.value)} placeholder="AST-000123" /></Field>
           </div>
+          <Field label="Description"><textarea className="textarea" value={f.description || ''} onChange={(e) => set('description', e.target.value)} /></Field>
+          <Field label="Remarks"><textarea className="textarea" value={f.remarks || ''} onChange={(e) => set('remarks', e.target.value)} /></Field>
         </div>
 
         <div className="m-section-title">Location & custody</div>
         <div className="m-card stack">
-          <Field label="Location"><LocationPicker value={toKey(f.locationId)} onChange={(v) => set('locationId', toId(v))} /></Field>
+          <Field label="Location">
+            <LocationPicker
+              value={toKey(f.locationId)}
+              onChange={(v) => setF({ ...f, locationId: toId(v), subLocationId: null })}
+              types={['company', 'site', 'building', 'floor', 'area', 'location']}
+            />
+          </Field>
+          <Field label="Sublocation">
+            <LocationPicker
+              value={toKey(f.subLocationId)}
+              onChange={(v) => set('subLocationId', toId(v))}
+              types={['sublocation', 'room']}
+              underId={toKey(f.locationId)}
+              placeholder={f.locationId ? 'Select sublocation…' : 'Select a location first'}
+            />
+          </Field>
           <Field label="Department"><DepartmentPicker value={toKey(f.departmentId)} onChange={(v) => set('departmentId', toId(v))} /></Field>
-          {!isEdit && <Field label="Assigned to"><EmployeePicker value={toKey(f.assignedTo)} onChange={(v) => set('assignedTo', toId(v))} placeholder="Unassigned" /></Field>}
+          {!isEdit && (
+            <Field label="Assigned to">
+              <EmployeePicker
+                value={toKey(f.assignedTo)}
+                onChange={(v) => {
+                  const emp = employees.find((e) => e._id === v);
+                  setF({ ...f, assignedTo: toId(v), custodianEmployeeId: emp?.empCode || f.custodianEmployeeId || '' });
+                }}
+                placeholder="Unassigned"
+              />
+            </Field>
+          )}
+          <Field label="Custodian employee ID"><input className="input mono" value={f.custodianEmployeeId || ''} onChange={(e) => set('custodianEmployeeId', e.target.value)} placeholder="e.g. EMP-00123" /></Field>
           <Field label="Status">
             <select className="select" value={f.status || ''} onChange={(e) => set('status', e.target.value)}>
               {ASSET_STATUSES.map((s) => <option key={s}>{s}</option>)}
+            </select>
+          </Field>
+          <Field label="Condition">
+            <select className="select" value={f.condition || ''} onChange={(e) => set('condition', e.target.value)}>
+              <option value="">—</option>
+              {CONDITIONS.map((c) => <option key={c}>{c}</option>)}
+            </select>
+          </Field>
+          <Field label="Ownership type">
+            <select className="select" value={f.ownershipType || ''} onChange={(e) => set('ownershipType', e.target.value)}>
+              <option value="">—</option>
+              {OWNERSHIP_TYPES.map((o) => <option key={o}>{o}</option>)}
             </select>
           </Field>
         </div>
@@ -339,6 +386,11 @@ export function MAssetForm() {
           <div className="form-grid">
             <Field label="Purchase date"><input type="date" className="input" value={toInputDate(f.purchaseDate)} onChange={(e) => set('purchaseDate', e.target.value)} /></Field>
             <Field label="Purchase cost"><input type="number" min={0} step="0.01" className="input" value={f.purchaseCost ?? ''} onChange={(e) => set('purchaseCost', e.target.value === '' ? null : Number(e.target.value))} /></Field>
+            <Field label="Currency">
+              <select className="select" value={f.currency || getCurrency()} onChange={(e) => set('currency', e.target.value)}>
+                {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
+              </select>
+            </Field>
             <Field label="Warranty start"><input type="date" className="input" value={toInputDate(f.warrantyStartDate)} onChange={(e) => set('warrantyStartDate', e.target.value)} /></Field>
             <Field label="Warranty end"><input type="date" className="input" value={toInputDate(f.warrantyEndDate)} onChange={(e) => set('warrantyEndDate', e.target.value)} /></Field>
             <Field label="AMC start"><input type="date" className="input" value={toInputDate(f.amcStartDate)} onChange={(e) => set('amcStartDate', e.target.value)} /></Field>

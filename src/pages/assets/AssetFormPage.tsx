@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Boxes, Calendar, MapPin, Plus, Tag } from 'lucide-react';
-import { ApiAsset, ApiAssetType, assetApi, assetTypeApi, ASSET_STATUSES } from '../../api/assetApi';
+import { ApiAsset, ApiAssetType, assetApi, assetTypeApi, ASSET_STATUSES, CONDITIONS, CURRENCIES, OWNERSHIP_TYPES } from '../../api/assetApi';
 import { useBranch } from '../../context/BranchContext';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
-import { toInputDate } from '../../lib/format';
+import { getCurrency, toInputDate } from '../../lib/format';
 import { useFetch } from '../../lib/hooks';
 import { ErrorState, Field, Loading, PageHeader } from '../../components/ui';
 import { DepartmentPicker, EmployeePicker, LocationPicker, SearchSelect } from '../../components/pickers';
@@ -31,8 +31,13 @@ const EMPTY: Partial<ApiAsset> = {
   assetCode: '',
   assetName: '',
   description: '',
+  remarks: '',
   status: 'In Store',
+  condition: 'New',
+  ownershipType: 'Owned',
+  currency: getCurrency(),
   purchaseCost: null,
+  custodianEmployeeId: '',
 };
 
 const DATE_FIELDS = ['purchaseDate', 'warrantyStartDate', 'warrantyEndDate', 'amcStartDate', 'amcEndDate'] as const;
@@ -42,7 +47,7 @@ export default function AssetFormPage() {
   const isEdit = Boolean(id);
   const navigate = useNavigate();
   const toast = useToast();
-  const { categories } = useData();
+  const { categories, employees } = useData();
   const { activeBranchId } = useBranch();
   const [f, setF] = useState<Partial<ApiAsset>>(EMPTY);
   const [loading, setLoading] = useState(isEdit);
@@ -217,6 +222,9 @@ export default function AssetFormPage() {
               <Field label="Description" className="full">
                 <textarea className="textarea" value={f.description || ''} onChange={(e) => set('description', e.target.value)} />
               </Field>
+              <Field label="Remarks" className="full">
+                <textarea className="textarea" value={f.remarks || ''} onChange={(e) => set('remarks', e.target.value)} placeholder="Optional notes for the register" />
+              </Field>
             </div>
           </Section>
 
@@ -228,7 +236,14 @@ export default function AssetFormPage() {
               <Field label="Purchase cost">
                 <input type="number" min={0} step="0.01" className="input" value={f.purchaseCost ?? ''} onChange={(e) => set('purchaseCost', e.target.value === '' ? null : Number(e.target.value))} />
               </Field>
-              <div />
+              <Field label="Currency">
+                <select className="select" value={f.currency || getCurrency()} onChange={(e) => set('currency', e.target.value)}>
+                  {f.currency && !CURRENCIES.includes(f.currency) && <option>{f.currency}</option>}
+                  {CURRENCIES.map((c) => (
+                    <option key={c}>{c}</option>
+                  ))}
+                </select>
+              </Field>
               <Field label="Warranty start">
                 <input type="date" className="input" value={toInputDate(f.warrantyStartDate)} onChange={(e) => set('warrantyStartDate', e.target.value)} />
               </Field>
@@ -251,13 +266,36 @@ export default function AssetFormPage() {
             <Section icon={<MapPin size={17} />} title="Location & custody" toneName="blue">
               <div className="stack">
                 <Field label="Location">
-                  <LocationPicker value={toKey(f.locationId)} onChange={(v) => set('locationId', toId(v))} />
+                  <LocationPicker
+                    value={toKey(f.locationId)}
+                    onChange={(v) => setF({ ...f, locationId: toId(v), subLocationId: null })}
+                    types={['company', 'site', 'building', 'floor', 'area', 'location']}
+                  />
+                </Field>
+                <Field label="Sublocation" hint={!f.locationId ? 'Select a location first' : undefined}>
+                  <LocationPicker
+                    value={toKey(f.subLocationId)}
+                    onChange={(v) => set('subLocationId', toId(v))}
+                    types={['sublocation', 'room']}
+                    underId={toKey(f.locationId)}
+                    placeholder={f.locationId ? 'Select sublocation…' : 'Select a location first'}
+                  />
                 </Field>
                 <Field label="Department">
                   <DepartmentPicker value={toKey(f.departmentId)} onChange={(v) => set('departmentId', toId(v))} />
                 </Field>
-                <Field label="Assigned to (employee)" hint={isEdit ? 'Use Assign / Transfer on the asset page to keep a custody history' : undefined}>
-                  <EmployeePicker value={toKey(f.assignedTo)} onChange={(v) => set('assignedTo', toId(v))} placeholder="Unassigned" />
+                <Field label="Assigned to" hint={isEdit ? 'Use Assign / Transfer on the asset page to keep a custody history' : undefined}>
+                  <EmployeePicker
+                    value={toKey(f.assignedTo)}
+                    onChange={(v) => {
+                      const emp = employees.find((e) => e._id === v);
+                      setF({ ...f, assignedTo: toId(v), custodianEmployeeId: emp?.empCode || f.custodianEmployeeId || '' });
+                    }}
+                    placeholder="Unassigned"
+                  />
+                </Field>
+                <Field label="Custodian employee ID" hint="Employee code of the custodian">
+                  <input className="input mono" value={f.custodianEmployeeId || ''} onChange={(e) => set('custodianEmployeeId', e.target.value)} placeholder="e.g. EMP-00123" />
                 </Field>
               </div>
             </Section>
@@ -270,6 +308,24 @@ export default function AssetFormPage() {
                     {f.status && !ASSET_STATUSES.includes(f.status) && <option>{f.status}</option>}
                     {ASSET_STATUSES.map((s) => (
                       <option key={s}>{s}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Condition">
+                  <select className="select" value={f.condition || ''} onChange={(e) => set('condition', e.target.value)}>
+                    <option value="">—</option>
+                    {f.condition && !CONDITIONS.includes(f.condition) && <option>{f.condition}</option>}
+                    {CONDITIONS.map((c) => (
+                      <option key={c}>{c}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Ownership type">
+                  <select className="select" value={f.ownershipType || ''} onChange={(e) => set('ownershipType', e.target.value)}>
+                    <option value="">—</option>
+                    {f.ownershipType && !OWNERSHIP_TYPES.includes(f.ownershipType) && <option>{f.ownershipType}</option>}
+                    {OWNERSHIP_TYPES.map((o) => (
+                      <option key={o}>{o}</option>
                     ))}
                   </select>
                 </Field>

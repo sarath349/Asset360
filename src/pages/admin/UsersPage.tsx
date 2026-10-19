@@ -1,16 +1,22 @@
 import { useMemo, useState } from 'react';
-import { KeyRound, Pencil, Plus, ShieldCheck, Trash2, UserX, Users } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { KeyRound, Monitor, Pencil, Plus, ShieldCheck, Smartphone, Trash2, UserX } from 'lucide-react';
 import { ApiUser, departmentApi, USER_ROLES, userApi, userDisplayName } from '../../api/assetApi';
 import { useFetch } from '../../lib/hooks';
 import { ago } from '../../lib/format';
 import { useAuth } from '../../context/AuthContext';
 import { useBranch } from '../../context/BranchContext';
-import { DepartmentNode, LocationNode, useData } from '../../context/DataContext';
+import { useData } from '../../context/DataContext';
 import { branchOf } from '../../lib/branch';
 import { useToast } from '../../context/ToastContext';
-import { Avatar, Badge, Confirm, DataTable, Empty, ErrorState, Field, Kpi, Loading, Modal, PageHeader, SearchInput, StatusBadge, Switch } from '../../components/ui';
+import { Avatar, Badge, Confirm, DataTable, Empty, ErrorState, Field, Kpi, Loading, Modal, PageHeader, SearchInput, StatusBadge, Switch, Tabs } from '../../components/ui';
 
 type Row = ApiUser & { _id: string };
+type LoginTab = 'web' | 'mobile';
+
+const MOBILE_ROLES = ['Technician', 'Auditor', 'Employee'];
+const WEB_ROLES = USER_ROLES.filter((r) => !MOBILE_ROLES.includes(r));
+const isMobileRole = (role?: string | null) => MOBILE_ROLES.some((r) => r.toLowerCase() === (role || '').trim().toLowerCase());
 
 interface Draft {
   userId?: number;
@@ -26,9 +32,11 @@ interface Draft {
 }
 
 export default function UsersPage() {
+  const [params, setParams] = useSearchParams();
+  const tab = ((params.get('tab') as LoginTab) || 'web') as LoginTab;
   const { can, user: me } = useAuth();
   const { reload: reloadLookups, departments, locations } = useData();
-  const { branches, locked, isSuperAdmin, activeBranchId, deptInScope, scopeIds } = useBranch();
+  const { branches, isSuperAdmin, activeBranchId, deptInScope, scopeIds } = useBranch();
   const toast = useToast();
   const [q, setQ] = useState('');
   const [role, setRole] = useState('');
@@ -37,22 +45,38 @@ export default function UsersPage() {
   const { data: users, loading, error, reload } = useFetch(() => userApi.list(), []);
 
   const rows: Row[] = useMemo(() => (users || []).map((u) => ({ ...u, _id: String(u.userId) })), [users]);
-  // Only a super admin can create other super admins; a branch admin manages the users of their own branch.
-  const roles = useMemo(() => ([...new Set([...USER_ROLES, ...rows.map((u) => u.role).filter(Boolean)])] as string[]).filter((r) => isSuperAdmin || r.toLowerCase() !== 'super admin'), [rows, isSuperAdmin]);
+  const tabRoles = useMemo(() => {
+    const base = tab === 'mobile' ? MOBILE_ROLES : WEB_ROLES;
+    const fromData = rows.map((u) => u.role).filter((r): r is string => Boolean(r) && (tab === 'mobile' ? isMobileRole(r) : !isMobileRole(r)));
+    return ([...new Set([...base, ...fromData])] as string[]).filter((r) => isSuperAdmin || r.toLowerCase() !== 'super admin');
+  }, [tab, rows, isSuperAdmin]);
+
   const branchOfUser = (u: Pick<ApiUser, 'departmentId'>) => {
     const d = departments.find((x) => x.departmentId === u.departmentId);
     return d?.locationId ? branchOf(d.locationId, locations) : null;
   };
 
+  const scoped = useMemo(() => (scopeIds ? rows.filter((u) => deptInScope(u.departmentId)) : rows), [rows, scopeIds, deptInScope]);
+  const webUsers = useMemo(() => scoped.filter((u) => !isMobileRole(u.role)), [scoped]);
+  const mobileUsers = useMemo(() => scoped.filter((u) => isMobileRole(u.role)), [scoped]);
+  const tabUsers = tab === 'mobile' ? mobileUsers : webUsers;
+
   const list = useMemo(() => {
-    let l = scopeIds ? rows.filter((u) => deptInScope(u.departmentId)) : rows;
+    let l = tabUsers;
     if (role) l = l.filter((u) => (u.role || '') === role);
     if (q) {
       const s = q.toLowerCase();
       l = l.filter((u) => [u.fullName, u.username, u.email, u.phone].some((x) => x?.toLowerCase().includes(s)));
     }
     return l;
-  }, [rows, role, q, scopeIds, deptInScope]);
+  }, [tabUsers, role, q]);
+
+  const switchTab = (next: string) => {
+    setParams({ tab: next });
+    setQ('');
+    setRole('');
+    setEdit(null);
+  };
 
   const save = async (d: Draft) => {
     try {
@@ -94,14 +118,13 @@ export default function UsersPage() {
     }
   };
 
-  const branchOfDept = (d: DepartmentNode) => (d.locationId ? branchOf(d.locationId, locations)?._id || null : null);
   const openEdit = (u: Row) =>
     setEdit({
       userId: u.userId, username: u.username || '', fullName: u.fullName || '', email: u.email || '', phone: u.phone || '', role: u.role || '', isActive: u.isActive, password: '',
       branchId: branchOfUser(u)?._id || '', departmentId: u.departmentId,
     });
   const blankUser = (): Draft => ({
-    username: '', fullName: '', email: '', phone: '', role: '', isActive: true, password: '',
+    username: '', fullName: '', email: '', phone: '', role: tab === 'mobile' ? 'Employee' : '', isActive: true, password: '',
     branchId: activeBranchId || '', departmentId: null,
   });
 
@@ -111,26 +134,35 @@ export default function UsersPage() {
     <>
       <PageHeader
         title="Admins & Users"
-        subtitle={isSuperAdmin ? 'Create branch admins and branch users. Each login belongs to one branch.' : 'Create and manage logins for your branch.'}
+        subtitle={tab === 'mobile' ? 'Mobile app logins for technicians, auditors and employees.' : isSuperAdmin ? 'Web / admin logins. Each belongs to one branch.' : 'Web / admin logins for your branch.'}
         actions={
           can('users', 'create') && (
             <button className="btn btn-primary" onClick={() => setEdit(blankUser())}>
-              <Plus size={16} /> Add user
+              <Plus size={16} /> Add {tab === 'mobile' ? 'mobile user' : 'user'}
             </button>
           )
         }
       />
       <div className="grid grid-kpi mb">
-        <Kpi label="Users" value={users?.length ?? '—'} icon={<Users size={19} />} />
-        <Kpi label="Active" value={users?.filter((u) => u.isActive).length ?? '—'} icon={<ShieldCheck size={19} />} toneName="green" />
-        <Kpi label="Disabled" value={users?.filter((u) => !u.isActive).length ?? '—'} icon={<UserX size={19} />} toneName="slate" />
+        <Kpi label="Web / Admin" value={webUsers.length} icon={<Monitor size={19} />} />
+        <Kpi label="Mobile" value={mobileUsers.length} icon={<Smartphone size={19} />} toneName="indigo" />
+        <Kpi label="Active" value={tabUsers.filter((u) => u.isActive).length} icon={<ShieldCheck size={19} />} toneName="green" />
+        <Kpi label="Disabled" value={tabUsers.filter((u) => !u.isActive).length} icon={<UserX size={19} />} toneName="slate" />
       </div>
       <div className="card">
+        <Tabs
+          active={tab}
+          onChange={switchTab}
+          tabs={[
+            { key: 'web', label: 'Web / Admin login', count: webUsers.length, icon: <Monitor size={15} /> },
+            { key: 'mobile', label: 'Mobile login', count: mobileUsers.length, icon: <Smartphone size={15} /> },
+          ]}
+        />
         <div className="toolbar">
-          <SearchInput value={q} onChange={setQ} placeholder="Search users…" />
+          <SearchInput value={q} onChange={setQ} placeholder={`Search ${tab === 'mobile' ? 'mobile' : 'web'} users…`} />
           <select className="select" style={{ width: 200 }} value={role} onChange={(e) => setRole(e.target.value)}>
             <option value="">All roles</option>
-            {roles.map((r) => (
+            {tabRoles.map((r) => (
               <option key={r}>{r}</option>
             ))}
           </select>
@@ -141,7 +173,7 @@ export default function UsersPage() {
           <DataTable
             rows={list}
             pageSize={20}
-            empty={<Empty title="No users" />}
+            empty={<Empty title={tab === 'mobile' ? 'No mobile users yet' : 'No web users yet'} action={can('users', 'create') && <button className="btn btn-sm btn-primary" onClick={() => setEdit(blankUser())}><Plus size={14} /> Add {tab === 'mobile' ? 'mobile user' : 'user'}</button>} />}
             columns={[
               {
                 key: 'fullName',
@@ -187,7 +219,7 @@ export default function UsersPage() {
           />
         )}
       </div>
-      {edit && <UserModal user={edit} roles={roles} branches={branches} departments={departments} branchOfDept={branchOfDept} lockedBranch={locked} onClose={() => setEdit(null)} onSave={save} />}
+      {edit && <UserModal user={edit} roles={tabRoles} loginKind={tab} onClose={() => setEdit(null)} onSave={save} />}
       <Confirm
         open={Boolean(remove)}
         title="Delete user"
@@ -211,13 +243,12 @@ export default function UsersPage() {
   );
 }
 
-function UserModal({ user, roles, branches, departments, branchOfDept, lockedBranch, onClose, onSave }: { user: Draft; roles: string[]; branches: LocationNode[]; departments: DepartmentNode[]; branchOfDept: (d: DepartmentNode) => string | null; lockedBranch: boolean; onClose: () => void; onSave: (u: Draft) => Promise<void> }) {
+function UserModal({ user, roles, loginKind, onClose, onSave }: { user: Draft; roles: string[]; loginKind: LoginTab; onClose: () => void; onSave: (u: Draft) => Promise<void> }) {
   const [f, setF] = useState<Draft>(user);
   const [busy, setBusy] = useState(false);
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setF((p) => ({ ...p, [k]: v }));
   const isNew = !user.userId;
-  const needsBranch = isNew && f.role.toLowerCase() !== 'super admin' && branches.length > 0;
-  const valid = f.username.trim() && (!isNew || f.password) && (!needsBranch || f.branchId);
+  const valid = f.username.trim() && (!isNew || f.password);
 
   const submit = async () => {
     setBusy(true);
@@ -230,7 +261,7 @@ function UserModal({ user, roles, branches, departments, branchOfDept, lockedBra
       open
       size="lg"
       onClose={onClose}
-      title={isNew ? 'Add user' : `Edit ${user.fullName || user.username}`}
+      title={isNew ? `Add ${loginKind === 'mobile' ? 'mobile' : 'web'} user` : `Edit ${user.fullName || user.username}`}
       footer={
         <>
           <button className="btn" onClick={onClose}>
@@ -263,34 +294,12 @@ function UserModal({ user, roles, branches, departments, branchOfDept, lockedBra
             </button>
           </div>
         </Field>
-        <Field label="Role" hint="Super Admin sees every branch; other roles are limited to their branch">
+        <Field label="Role" hint={loginKind === 'mobile' ? 'Mobile users land in the mobile app after sign-in' : 'Web / admin users use the desktop app'}>
           <select className="select" value={f.role} onChange={(e) => set('role', e.target.value)}>
             <option value="">—</option>
             {roles.map((r) => (
               <option key={r}>{r}</option>
             ))}
-          </select>
-        </Field>
-        <Field label="Branch" required={needsBranch} hint={lockedBranch ? 'Fixed to your branch' : 'Empty = access to all branches (super admin)'}>
-          <select className="select" value={f.branchId} disabled={lockedBranch} onChange={(e) => setF((p) => ({ ...p, branchId: e.target.value, departmentId: null }))}>
-            <option value="">{branches.length ? 'All branches' : 'No branches yet (add a Site under Branches & Locations)'}</option>
-            {branches.map((b) => (
-              <option key={b._id} value={b._id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Department" hint="Optional. Defaults to the branch's General department">
-          <select className="select" value={f.departmentId ?? ''} disabled={!f.branchId} onChange={(e) => set('departmentId', e.target.value ? Number(e.target.value) : null)}>
-            <option value="">General</option>
-            {departments
-              .filter((d) => branchOfDept(d) === f.branchId)
-              .map((d) => (
-                <option key={d.departmentId} value={d.departmentId}>
-                  {d.name}
-                </option>
-              ))}
           </select>
         </Field>
         <div className="full row small" style={{ gap: 8 }}>

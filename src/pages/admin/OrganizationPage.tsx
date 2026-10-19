@@ -238,7 +238,6 @@ function EntityModal({ kind, item, onClose, onSave }: { kind: Entity; item: any;
           <>
             <Field label="Department name" required><input className="input" value={f.departmentName || ''} onChange={(e) => set('departmentName', e.target.value)} autoFocus /></Field>
             <Field label="Code" required><input className="input mono" value={f.departmentCode || ''} onChange={(e) => set('departmentCode', e.target.value)} /></Field>
-            <Field label="Branch / location" className="full" hint="Decides which branch this department belongs to"><LocationPicker value={toKey(f.locationId)} onChange={(v) => set('locationId', toId(v))} /></Field>
             <Field label="Description" className="full"><textarea className="textarea" value={f.description || ''} onChange={(e) => set('description', e.target.value)} /></Field>
             <label className="row small" style={{ gap: 10 }}><Switch checked={f.isActive !== false} onChange={(v) => set('isActive', v)} /> Active</label>
           </>

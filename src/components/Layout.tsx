@@ -19,19 +19,20 @@ interface NavItem {
 const NAV: { group: string; items: NavItem[] }[] = [
   { group: 'Overview', items: [{ to: '/', label: 'Dashboard', icon: <LayoutDashboard size={17} />, module: 'dashboard' }] },
   {
-    group: 'Assets',
-    items: [
-      { to: '/assets', label: 'Asset Register', icon: <Boxes size={17} />, module: 'assets' },
-      { to: '/lifecycle', label: 'Lifecycle', icon: <GitBranch size={17} />, module: 'lifecycle' },
-      { to: '/tags', label: 'QR / Barcode Labels', icon: <QrCode size={17} />, module: 'tags' },
-    ],
-  },
-  {
     group: 'Master Data',
     items: [
+      { to: '/assets', label: 'Asset Register', icon: <Boxes size={17} />, module: 'assets' },
       { to: '/locations', label: 'Branches & Locations', icon: <MapPin size={17} />, module: 'locations' },
       { to: '/organization', label: 'Departments & Employees', icon: <Building2 size={17} />, module: 'organization' },
       { to: '/categories', label: 'Category · Subcategory · Type', icon: <FolderTree size={17} />, module: 'categories' },
+      { to: '/users', label: 'Admins & Users', icon: <Users size={17} />, module: 'users' },
+    ],
+  },
+  {
+    group: 'Assets',
+    items: [
+      { to: '/lifecycle', label: 'Lifecycle', icon: <GitBranch size={17} />, module: 'lifecycle' },
+      { to: '/tags', label: 'QR / Barcode Labels', icon: <QrCode size={17} />, module: 'tags' },
     ],
   },
   {
@@ -52,10 +53,6 @@ const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: 'Insights',
     items: [{ to: '/reports', label: 'Reports', icon: <FileSpreadsheet size={17} />, module: 'reports' }],
-  },
-  {
-    group: 'Administration',
-    items: [{ to: '/users', label: 'Admins & Users', icon: <Users size={17} />, module: 'users' }],
   },
 ];
 
