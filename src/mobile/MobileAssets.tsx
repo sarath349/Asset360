@@ -8,7 +8,7 @@ import { useData, useNames } from '../context/DataContext';
 import { useToast } from '../context/ToastContext';
 import { cachedAssets, extractCode, findAsset, loadAssets } from '../lib/assetLookup';
 import { nextAssetCode, nextSerialNumber } from '../lib/assetCodes';
-import { date, daysUntil, getCurrency, money, toInputDate } from '../lib/format';
+import { date, daysUntil, getCurrency, toInputDate } from '../lib/format';
 import { useFetch } from '../lib/hooks';
 import { printLabels } from '../lib/labels';
 import { pathOf } from '../lib/tree';
