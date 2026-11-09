@@ -1,8 +1,8 @@
 import type { LocationNode } from '../context/DataContext';
 
-// The AssetAPI has no branch concept. A branch is a Location of type "Site" (the level directly under the
-// company); everything below it (buildings, floors, rooms…) belongs to that branch.
-export const BRANCH_TYPES = ['site', 'branch'];
+// Branches are top-level Location records (Swagger: location + branchCode/branchName).
+// Legacy Site/Branch locationType values still count; nested sublocations do not.
+export const BRANCH_TYPES = ['site', 'branch', 'location', 'company'];
 export const isBranchType = (t?: string | null) => BRANCH_TYPES.includes((t || '').toLowerCase());
 
 /** The top-most branch-type ancestor of a location (or the location itself). */

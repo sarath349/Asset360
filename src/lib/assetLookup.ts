@@ -44,15 +44,53 @@ export function cachedAssets(): ApiAsset[] {
   }
 }
 
+const CHANGED = 'assetpro.assets-changed';
+/** Fired when the offline copy was wiped on purpose — UI must NOT refetch the server list. */
+const CLEARED = 'assetpro.device-cleared';
+
+function writeAssetCache(assets: ApiAsset[]) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(assets));
+  } catch {
+    // Quota full: prefer an empty/missing cache over keeping a stale full copy.
+    try {
+      localStorage.removeItem(CACHE_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/** Drop the offline asset list. Does not refetch from the server. */
+export function clearAssetCache() {
+  try {
+    localStorage.removeItem(CACHE_KEY);
+  } catch {
+    /* ignore */
+  }
+  writeAssetCache([]);
+  window.dispatchEvent(new Event(CLEARED));
+}
+
+/** After a server-side delete: drop that row from the offline copy and tell lists to refetch. */
+export function forgetCachedAsset(assetId: number) {
+  try {
+    writeAssetCache(cachedAssets().filter((a) => a.assetId !== assetId));
+  } catch {
+    try {
+      localStorage.removeItem(CACHE_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+  window.dispatchEvent(new Event(CHANGED));
+}
+
 /** Loads the register and keeps a copy on the device so scans still resolve with no signal. */
 export async function loadAssets(): Promise<{ assets: ApiAsset[]; stale: boolean }> {
   try {
     const assets = await assetApi.list();
-    try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify(assets));
-    } catch {
-      /* storage full: skip caching */
-    }
+    writeAssetCache(assets);
     return { assets, stale: false };
   } catch (err) {
     const hit = cachedAssets();
@@ -60,6 +98,8 @@ export async function loadAssets(): Promise<{ assets: ApiAsset[]; stale: boolean
     throw err;
   }
 }
+
+export const ASSET_CACHE_EVENTS = { CHANGED, CLEARED } as const;
 
 export async function findAsset(raw: string): Promise<ApiAsset | null> {
   const cached = matchAsset(cachedAssets(), raw);

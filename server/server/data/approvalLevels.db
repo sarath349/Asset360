@@ -1,0 +1,2 @@
+{"approvalLevelId":2,"levelCode":"L1","levelName":"Level 1","module":"receipt","stepOrder":1,"role":"Asset Manager","minAmount":null,"isActive":true,"createdDate":"2026-10-30T11:39:03.156Z","updatedDate":null,"createdBy":null,"_id":"le1fSBrVXzeqiUJk"}
+{"approvalLevelId":1,"levelCode":"L1","levelName":"Level 1","module":"disposal","stepOrder":1,"role":"Asset Manager","minAmount":null,"isActive":true,"createdDate":"2026-10-30T11:39:03.153Z","updatedDate":null,"createdBy":null,"_id":"rmHKG0KYYc4R0zZZ"}

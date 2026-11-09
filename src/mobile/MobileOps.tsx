@@ -13,7 +13,9 @@ import { useFetch } from '../lib/hooks';
 import { Badge, Confirm, Empty, Field, Loading, Segmented } from '../components/ui';
 import { AssignmentModal } from '../components/assetModals';
 import { AssetScanSelect, LocalNote, PhotoPicker, PRIORITIES, Top } from './kit';
-import { getJob, Job, JobKind, newId, removeJob, saveJob, SparePart, useJobs, useSettings } from './deviceStore';
+import {
+  cancelJob, completeJob, getJob, Job, JobKind, newId, refreshJobs, removeJob, saveJob, SparePart, startJob, useJobs, useSettings,
+} from './deviceStore';
 
 const PRIORITY_TONE: Record<string, string> = { Low: 'slate', Medium: 'blue', High: 'amber', Critical: 'red' };
 const JOB_TYPES = ['Preventive maintenance', 'Fault', 'Breakdown', 'Repair request'];
@@ -30,6 +32,9 @@ export function MMaintenance() {
   const jobs = useJobs();
   const { inScope } = useBranch();
   const [tab, setTab] = useState('open');
+  useEffect(() => {
+    refreshJobs().catch(() => undefined);
+  }, []);
   const list = useMemo(
     () =>
       jobs
@@ -41,9 +46,8 @@ export function MMaintenance() {
 
   return (
     <>
-      <Top title="Maintenance tasks" sub="Jobs, faults and repair requests" back right={<Link to="/m/maintenance/new" className="m-back" aria-label="New job"><Plus size={18} /></Link>} />
+      <Top title="Maintenance tasks" sub="Synced with the web portal" back right={<Link to="/m/maintenance/new" className="m-back" aria-label="New job"><Plus size={18} /></Link>} />
       <div className="m-body">
-        <LocalNote />
         <Segmented
           value={tab}
           onChange={setTab}
@@ -127,16 +131,15 @@ export function MJobNew() {
       beforePhotos: photos,
       gps,
     };
-    saveJob(job);
-    toast.success('Job created');
-    navigate(`/m/maintenance/${job.id}`, { replace: true });
+    const { job: saved, queued } = await saveJob(job);
+    toast.success(queued ? 'Saved offline — will sync when online' : 'Job created');
+    navigate(`/m/maintenance/${saved.jobId || saved.id}`, { replace: true });
   };
 
   return (
     <>
       <Top title="New job" sub="Maintenance, fault, breakdown or repair request" back />
       <div className="m-body">
-        <LocalNote />
         <div className="m-card stack">
           <Field label="Asset"><AssetScanSelect value={asset} onChange={setAsset} /></Field>
           <Field label="Type">
@@ -168,35 +171,53 @@ export function MJob() {
   const [part, setPart] = useState<SparePart>({ name: '', qty: 1 });
   const [busy, setBusy] = useState(false);
 
-  if (!job) return <><Top title="Job" back /><div className="m-body"><Empty title="Job not found" message="It may have been removed from this device." /></div></>;
+  useEffect(() => {
+    refreshJobs().then(() => setJob(getJob(id!))).catch(() => undefined);
+  }, [id]);
+
+  if (!job) return <><Top title="Job" back /><div className="m-body"><Empty title="Job not found" message="It may have been removed." /></div></>;
   const editable = job.status === 'In Progress';
   const patch = (p: Partial<Job>) => setJob((j) => (j ? { ...j, ...p } : j));
-  const persist = (next: Job) => {
-    saveJob(next);
-    setJob(next);
+  const persist = async (next: Job) => {
+    const { job: saved } = await saveJob(next);
+    setJob(saved);
   };
 
   const start = async () => {
     setBusy(true);
-    let prev: string | null | undefined = job.prevAssetStatus;
     try {
-      if (markAsset && job.assetId) prev = await setAssetStatus(job.assetId, 'Under Maintenance');
+      // If not yet synced, mark asset locally then start via API helper.
+      if (!job.jobId && markAsset && job.assetId) {
+        try {
+          await setAssetStatus(job.assetId, 'Under Maintenance');
+        } catch (err) {
+          toast.error(err);
+        }
+      }
+      const next = await startJob(job, markAsset);
+      setJob(next);
     } catch (err) {
       toast.error(err);
     }
-    persist({ ...job, status: 'In Progress', startedAt: new Date().toISOString(), prevAssetStatus: prev });
     setBusy(false);
   };
 
   const complete = async () => {
     setBusy(true);
     try {
-      if (markAsset && job.assetId) await setAssetStatus(job.assetId, job.prevAssetStatus && job.prevAssetStatus !== 'Under Maintenance' ? job.prevAssetStatus : 'Active');
+      if (!job.jobId && markAsset && job.assetId) {
+        try {
+          await setAssetStatus(job.assetId, job.prevAssetStatus && job.prevAssetStatus !== 'Under Maintenance' ? job.prevAssetStatus : 'Active');
+        } catch (err) {
+          toast.error(err);
+        }
+      }
+      const next = await completeJob(job, markAsset);
+      setJob(next);
+      toast.success('Job completed');
     } catch (err) {
       toast.error(err);
     }
-    persist({ ...job, status: 'Completed', completedAt: new Date().toISOString() });
-    toast.success('Job completed');
     setBusy(false);
   };
 
@@ -220,7 +241,6 @@ export function MJob() {
           {job.gps && <div className="m-row"><span><MapPin size={12} /> Where</span><span className="small">{job.gps}</span></div>}
           {job.description && <div className="small" style={{ paddingTop: 10 }}>{job.description}</div>}
         </div>
-        <LocalNote />
 
         {job.status === 'Open' && (
           <div className="m-card stack mt-sm">
@@ -271,7 +291,7 @@ export function MJob() {
             {editable && (
               <div className="m-card stack mt-sm">
                 {job.assetId && <label className="checkbox small"><input type="checkbox" checked={markAsset} onChange={(e) => setMarkAsset(e.target.checked)} /> Set the asset back to “{job.prevAssetStatus && job.prevAssetStatus !== 'Under Maintenance' ? job.prevAssetStatus : 'Active'}”</label>}
-                <button className="btn" disabled={busy} onClick={() => (persist(job), toast.success('Progress saved'))}>Save progress</button>
+                <button className="btn" disabled={busy} onClick={async () => { await persist(job); toast.success('Progress saved'); }}>Save progress</button>
                 <button className="btn btn-success btn-lg btn-block" disabled={busy} onClick={complete}>Complete job</button>
               </div>
             )}
@@ -279,11 +299,25 @@ export function MJob() {
         )}
 
         {job.status !== 'Completed' && job.status !== 'Cancelled' && (
-          <button className="btn btn-danger-ghost btn-block mt" onClick={() => persist({ ...job, status: 'Cancelled' })}>Cancel job</button>
+          <button
+            className="btn btn-danger-ghost btn-block mt"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                setJob(await cancelJob(job));
+              } catch (err) {
+                toast.error(err);
+              }
+              setBusy(false);
+            }}
+          >
+            Cancel job
+          </button>
         )}
-        <button className="btn btn-ghost btn-block mt-sm" onClick={() => setConfirmDelete(true)}><Trash2 size={14} /> Remove from this device</button>
+        <button className="btn btn-ghost btn-block mt-sm" onClick={() => setConfirmDelete(true)}><Trash2 size={14} /> Delete job</button>
       </div>
-      <Confirm open={confirmDelete} danger title="Remove job?" message="This deletes the job record from this device." confirmText="Remove" onClose={() => setConfirmDelete(false)} onConfirm={() => (removeJob(job.id), navigate('/m/maintenance', { replace: true }))} />
+      <Confirm open={confirmDelete} danger title="Delete job?" message="Removes this job from the server and this device." confirmText="Delete" onClose={() => setConfirmDelete(false)} onConfirm={async () => { await removeJob(job.id); navigate('/m/maintenance', { replace: true }); }} />
     </>
   );
 }

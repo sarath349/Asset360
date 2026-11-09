@@ -27,6 +27,10 @@ import UsersPage from './pages/admin/UsersPage';
 import TagsPage from './pages/TagsPage';
 import ScanLandingPage from './pages/ScanLandingPage';
 import MobileApp from './mobile/MobileApp';
+import ReceiptsPage from './pages/receipts/ReceiptsPage';
+import ReceiptDetailPage from './pages/receipts/ReceiptDetailPage';
+import BulkUploadPage from './pages/assets/BulkUploadPage';
+import ApprovalLevelsPage from './pages/admin/ApprovalLevelsPage';
 
 function Protected({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -55,8 +59,6 @@ function Home() {
 
 // Modules the AssetAPI does not provide endpoints for yet.
 const COMING_SOON: { path: string; title: string }[] = [
-  { path: 'maintenance/*', title: 'Maintenance' },
-  { path: 'procurement', title: 'Requests & Purchase' },
   { path: 'notifications', title: 'Notifications & Alerts' },
   { path: 'roles', title: 'Roles & Permissions' },
   { path: 'settings', title: 'Settings' },
@@ -78,6 +80,7 @@ export default function App() {
       >
         <Route index element={<Home />} />
         <Route path="assets" element={<Guard module="assets"><AssetsPage /></Guard>} />
+        <Route path="assets/import" element={<Guard module="assets" action="create"><BulkUploadPage /></Guard>} />
         <Route path="assets/new" element={<Guard module="assets" action="create"><AssetFormPage /></Guard>} />
         <Route path="assets/:id" element={<Guard module="assets"><AssetDetailPage /></Guard>} />
         <Route path="assets/:id/edit" element={<Guard module="assets" action="edit"><AssetFormPage /></Guard>} />
@@ -88,12 +91,15 @@ export default function App() {
         <Route path="transfers/:id" element={<Navigate to="/transfers" replace />} />
         <Route path="audits" element={<Guard module="audits"><AuditsPage /></Guard>} />
         <Route path="audits/:id" element={<Guard module="audits"><AuditDetailPage /></Guard>} />
+        <Route path="receipts" element={<Guard module="procurement"><ReceiptsPage /></Guard>} />
+        <Route path="receipts/:id" element={<Guard module="procurement"><ReceiptDetailPage /></Guard>} />
         <Route path="contracts" element={<Guard module="contracts"><ContractsPage /></Guard>} />
         <Route path="contracts/:id" element={<Guard module="contracts"><ContractDetailPage /></Guard>} />
         <Route path="disposal" element={<Guard module="disposal"><DisposalPage /></Guard>} />
         <Route path="disposal/:id" element={<Guard module="disposal"><DisposalDetailPage /></Guard>} />
         <Route path="depreciation" element={<Guard module="depreciation"><DepreciationPage /></Guard>} />
         <Route path="tags" element={<Guard module="tags"><TagsPage /></Guard>} />
+        <Route path="approval-levels" element={<Guard module="roles"><ApprovalLevelsPage /></Guard>} />
         <Route path="reports" element={<Guard module="reports"><ReportsPage /></Guard>} />
         <Route path="organization" element={<Guard module="organization"><OrganizationPage /></Guard>} />
         <Route path="users" element={<Guard module="users"><UsersPage /></Guard>} />

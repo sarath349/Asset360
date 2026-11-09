@@ -1,18 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeftRight, History, Pencil, Plus, Printer, QrCode, Radio, ScanLine, ShieldCheck, Tag, Wrench } from 'lucide-react';
+import { AlertTriangle, ArrowLeftRight, History, Pencil, Plus, Printer, QrCode, Radio, ScanLine, ShieldCheck, Tag, Trash2 } from 'lucide-react';
 import { ApiAsset, assetApi, ASSET_STATUSES, assetTypeApi, ApiAssetType, AssignmentAction, CONDITIONS, CURRENCIES, OWNERSHIP_TYPES } from '../api/assetApi';
 import { useAuth } from '../context/AuthContext';
 import { useBranch } from '../context/BranchContext';
 import { useData, useNames } from '../context/DataContext';
 import { useToast } from '../context/ToastContext';
-import { cachedAssets, extractCode, findAsset, loadAssets } from '../lib/assetLookup';
+import { cachedAssets, extractCode, findAsset, forgetCachedAsset, loadAssets } from '../lib/assetLookup';
 import { nextAssetCode, nextSerialNumber } from '../lib/assetCodes';
 import { date, daysUntil, getCurrency, toInputDate } from '../lib/format';
-import { useFetch } from '../lib/hooks';
+import { useFetch, useReloadOnAssetChange } from '../lib/hooks';
 import { printLabels } from '../lib/labels';
 import { pathOf } from '../lib/tree';
-import { Badge, Empty, Field, Loading, Modal, StatusBadge } from '../components/ui';
+import { Badge, Confirm, Empty, Field, Loading, Modal, StatusBadge } from '../components/ui';
 import { DepartmentPicker, EmployeePicker, LocationPicker, SearchSelect } from '../components/pickers';
 import { AssignmentModal } from '../components/assetModals';
 import { Scanner } from '../components/Scanner';
@@ -87,6 +87,7 @@ export function MAsset() {
   const [sheet, setSheet] = useState<'' | 'status' | 'transfer'>('');
   const [action, setAction] = useState<AssignmentAction | undefined>();
   const [status, setStatus] = useState('');
+  const [confirmDel, setConfirmDel] = useState(false);
 
   const { data: a, loading, reload } = useFetch(async () => {
     try {
@@ -140,13 +141,13 @@ export function MAsset() {
         <StaleNote stale={stale} />
         <div className="m-actions">
           {can('transfers', 'create') && tile(<ArrowLeftRight size={20} />, 'Transfer / handover', () => (setAction(a.assignedTo ? 'transfer' : 'assign'), setSheet('transfer')))}
-          {tile(<AlertTriangle size={20} />, 'Report fault', () => navigate(`/m/maintenance/new?asset=${a.assetId}&type=Fault`))}
-          {tile(<Wrench size={20} />, 'Maintenance job', () => navigate(`/m/maintenance/new?asset=${a.assetId}`))}
+          {tile(<AlertTriangle size={20} />, 'Report incident', () => navigate(`/m/incident?asset=${a.assetId}`))}
           {tile(<History size={20} />, 'History', () => navigate(`/m/history?asset=${a.assetId}`))}
           {tile(<Printer size={20} />, 'Print label', label)}
           {can('assets', 'edit') && tile(<Pencil size={20} />, 'Edit', () => navigate(`/m/asset/${a.assetId}/edit`))}
           {can('assets', 'edit') && tile(<Tag size={20} />, 'Update status', () => (setStatus(a.status || ASSET_STATUSES[0]), setSheet('status')))}
           {tile(<ShieldCheck size={20} />, 'Report incident', () => navigate(`/m/incident?asset=${a.assetId}`))}
+          {can('assets', 'delete') && tile(<Trash2 size={20} />, 'Delete asset', () => setConfirmDel(true))}
         </div>
 
         <div className="m-section-title">Details</div>
@@ -160,6 +161,8 @@ export function MAsset() {
           <Row k="Ownership" v={a.ownershipType || '—'} />
           <Row k="Warranty" v={<Expiry d={a.warrantyEndDate} label="Warranty" />} />
           <Row k="AMC" v={<Expiry d={a.amcEndDate} label="AMC" />} />
+          <Row k="Insurance" v={<Expiry d={a.insuranceEndDate} label="Insurance" />} />
+          {a.insurancePolicyNumber && <Row k="Policy no." v={<span className="mono">{a.insurancePolicyNumber}</span>} />}
           {a.description && <Row k="Description" v={a.description} />}
           {a.remarks && <Row k="Remarks" v={a.remarks} />}
         </div>
@@ -167,7 +170,7 @@ export function MAsset() {
         <div className="m-section-title">Location & custody</div>
         <div className="m-card">
           <Row k="Location" v={where || '—'} />
-          <Row k="Sublocation" v={names.location(a.subLocationId) || '—'} />
+          <Row k="Sublocation" v={names.subLocation(a.subLocationId) || '—'} />
           <Row k="Department" v={names.department(a.departmentId) || '—'} />
           <Row k="Assigned to" v={a.assignedTo ? names.employee(a.assignedTo) : 'In store / unassigned'} />
           <Row k="Custodian ID" v={a.custodianEmployeeId ? <span className="mono">{a.custodianEmployeeId}</span> : '—'} />
@@ -197,6 +200,30 @@ export function MAsset() {
           ))}
         </div>
       </Modal>
+      <Confirm
+        open={confirmDel}
+        danger
+        title="Delete asset?"
+        confirmText="Delete permanently"
+        message={
+          <>
+            This permanently removes <b>{code}</b> from the server and this device. This cannot be undone.
+          </>
+        }
+        onClose={() => setConfirmDel(false)}
+        onConfirm={async () => {
+          try {
+            await assetApi.remove(a.assetId);
+            forgetCachedAsset(a.assetId);
+            toast.success('Asset deleted');
+            setConfirmDel(false);
+            navigate('/m/history', { replace: true });
+          } catch (err) {
+            toast.error(err);
+            throw err;
+          }
+        }}
+      />
     </>
   );
 }
@@ -236,7 +263,7 @@ function CodeField({ value, onChange, placeholder, mono = true }: { value: strin
   );
 }
 
-const DATES = ['purchaseDate', 'warrantyStartDate', 'warrantyEndDate', 'amcStartDate', 'amcEndDate'] as const;
+const DATES = ['purchaseDate', 'warrantyStartDate', 'warrantyEndDate', 'amcStartDate', 'amcEndDate', 'insuranceStartDate', 'insuranceEndDate'] as const;
 
 export function MAssetForm() {
   const { id } = useParams();
@@ -341,9 +368,9 @@ export function MAssetForm() {
           </Field>
           <Field label="Sublocation">
             <LocationPicker
-              value={toKey(f.subLocationId)}
-              onChange={(v) => set('subLocationId', toId(v))}
-              types={['sublocation', 'room']}
+              value={f.subLocationId ? `s${f.subLocationId}` : null}
+              onChange={(v) => set('subLocationId', v?.startsWith('s') ? Number(v.slice(1)) || null : toId(v))}
+              types={['building', 'floor', 'area', 'sublocation', 'room', 'zone', 'rack']}
               underId={toKey(f.locationId)}
               placeholder={f.locationId ? 'Select sublocation…' : 'Select a location first'}
             />
@@ -381,7 +408,7 @@ export function MAssetForm() {
           </Field>
         </div>
 
-        <div className="m-section-title">Purchase, warranty & AMC</div>
+        <div className="m-section-title">Purchase, warranty, AMC & insurance</div>
         <div className="m-card">
           <div className="form-grid">
             <Field label="Purchase date"><input type="date" className="input" value={toInputDate(f.purchaseDate)} onChange={(e) => set('purchaseDate', e.target.value)} /></Field>
@@ -395,6 +422,9 @@ export function MAssetForm() {
             <Field label="Warranty end"><input type="date" className="input" value={toInputDate(f.warrantyEndDate)} onChange={(e) => set('warrantyEndDate', e.target.value)} /></Field>
             <Field label="AMC start"><input type="date" className="input" value={toInputDate(f.amcStartDate)} onChange={(e) => set('amcStartDate', e.target.value)} /></Field>
             <Field label="AMC end"><input type="date" className="input" value={toInputDate(f.amcEndDate)} onChange={(e) => set('amcEndDate', e.target.value)} /></Field>
+            <Field label="Insurance start"><input type="date" className="input" value={toInputDate(f.insuranceStartDate)} onChange={(e) => set('insuranceStartDate', e.target.value)} /></Field>
+            <Field label="Insurance end"><input type="date" className="input" value={toInputDate(f.insuranceEndDate)} onChange={(e) => set('insuranceEndDate', e.target.value)} /></Field>
+            <Field label="Insurance policy no."><input className="input mono" value={f.insurancePolicyNumber || ''} onChange={(e) => set('insurancePolicyNumber', e.target.value)} placeholder="Optional" /></Field>
           </div>
         </div>
 
@@ -416,7 +446,8 @@ export function MMine() {
   const { employee, choose } = useMyEmployee();
   const [q, setQ] = useState('');
   const [pick, setPick] = useState(false);
-  const { data, loading } = useFetch(() => loadAssets(), []);
+  const { data, loading, reload, setData } = useFetch(() => loadAssets(), []);
+  useReloadOnAssetChange(reload, () => setData({ assets: [], stale: false }));
   const mine = useMemo(() => {
     const list = (data?.assets || []).filter((a) => employee && a.assignedTo === employee.employeeId);
     if (!q) return list;

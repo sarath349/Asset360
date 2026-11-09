@@ -43,6 +43,11 @@ export function removeQueued(id: string) {
   saveQueue(getQueue().filter((a) => a.id !== id));
 }
 
+/** Wipe the offline write queue and notify every subscriber (Clear device data). */
+export function clearQueue() {
+  saveQueue([]);
+}
+
 export async function mutate<T = any>(method: 'POST' | 'PUT', path: string, body: unknown, label: string): Promise<{ queued: boolean; data?: T }> {
   if (navigator.onLine) {
     try {

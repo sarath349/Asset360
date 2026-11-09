@@ -58,11 +58,14 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   } catch {
     data = text;
   }
-  if (!res.ok) throw new ApiError(errorMessage(data, res.status), res.status);
+  if (!res.ok) throw new ApiError(errorMessage(data, res.status, path), res.status);
   return data as T;
 }
 
-function errorMessage(data: any, status: number) {
+// Modules that only the bundled Asset360 API (server/) implements; the cloud AssetAPI returns 404 for them.
+const LOCAL_ONLY = ['/receipts', '/approvallevels', '/maintenance', '/labeltemplates'];
+
+function errorMessage(data: any, status: number, path = '') {
   if (typeof data === 'string' && data.trim() && data.length < 300) return data.trim();
   if (data?.message) return data.message;
   if (data?.errors && typeof data.errors === 'object') {
@@ -70,6 +73,10 @@ function errorMessage(data: any, status: number) {
     if (first) return String(first);
   }
   if (data?.title) return data.title;
+  if (status === 404 && LOCAL_ONLY.some((p) => path.startsWith(p))) {
+    return 'This module is not implemented on the connected API yet (the endpoint returns 404). It needs to be added to the backend.';
+  }
+  if (status === 502 || status === 503 || status === 504) return 'The API server is not reachable. Check the API target (VITE_API_TARGET) and that the server is running.';
   return `Request failed (${status})`;
 }
 

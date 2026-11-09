@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Download, Filter, ImageIcon, Plus, X } from 'lucide-react';
+import { Download, Filter, ImageIcon, Plus, Upload, X } from 'lucide-react';
 import { ApiAsset, ApiAssetSummary, assetApi, ASSET_STATUSES } from '../../api/assetApi';
-import { useDebounced, useFetch } from '../../lib/hooks';
+import { useDebounced, useFetch, useReloadOnAssetChange } from '../../lib/hooks';
 import { date, daysUntil, downloadCsv, money } from '../../lib/format';
 import { useAuth } from '../../context/AuthContext';
 import { useBranch } from '../../context/BranchContext';
@@ -50,7 +50,16 @@ export default function AssetsPage() {
   };
 
   const { data, loading, error, reload } = useFetch(() => assetApi.list(), []);
-  const { data: summaries } = useFetch(() => assetApi.listFull().catch(() => [] as ApiAssetSummary[]), []);
+  const { data: summaries, reload: reloadSummaries } = useFetch(() => assetApi.listFull().catch(() => [] as ApiAssetSummary[]), []);
+  useReloadOnAssetChange(
+    () => {
+      reload();
+      reloadSummaries();
+    },
+    () => {
+      // Device cache cleared — keep the server register as-is on the web portal.
+    }
+  );
   const summaryById = useMemo(() => new Map((summaries || []).map((s) => [s.assetId, s])), [summaries]);
 
   const catName = useMemo(() => new Map(categories.map((c) => [c._id, c.name])), [categories]);
@@ -62,6 +71,10 @@ export default function AssetsPage() {
     let list = (data || []).filter((a) => inScope(a.locationId));
     const statuses = filters.status ? filters.status.split(',') : [];
     if (statuses.length) list = list.filter((a) => statuses.includes(a.status || ''));
+    else {
+      // Hide retired stock unless the user explicitly filters for those statuses.
+      list = list.filter((a) => !/^(disposed|retired)$/i.test(a.status || ''));
+    }
     if (filters.category) list = list.filter((a) => String(a.categoryId) === filters.category);
     if (filters.subcategory) list = list.filter((a) => String(a.subCategoryId) === filters.subcategory);
     if (filters.assetType) list = list.filter((a) => String(a.assetTypeId) === filters.assetType);
@@ -137,7 +150,7 @@ export default function AssetsPage() {
         assetType: a.assetTypeId ? catName.get(`t${a.assetTypeId}`) : '',
         category: categoryName(a),
         location: names.location(a.locationId),
-        subLocation: names.location(a.subLocationId),
+        subLocation: names.subLocation(a.subLocationId),
         department: names.department(a.departmentId),
         assignedTo: names.employee(a.assignedTo),
         purchaseDate: a.purchaseDate?.slice(0, 10),
@@ -161,9 +174,14 @@ export default function AssetsPage() {
               </button>
             )}
             {can('assets', 'create') && (
-              <button className="btn btn-primary" onClick={() => navigate('/assets/new')}>
-                <Plus size={16} /> Add asset
-              </button>
+              <>
+                <button className="btn" onClick={() => navigate('/assets/import')}>
+                  <Upload size={16} /> Bulk upload
+                </button>
+                <button className="btn btn-primary" onClick={() => navigate('/assets/new')}>
+                  <Plus size={16} /> Add asset
+                </button>
+              </>
             )}
           </>
         }

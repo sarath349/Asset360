@@ -22,7 +22,7 @@ export interface User {
 interface AuthState {
   user: User | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<User>;
+  login: (username: string, password: string, opts?: { mobile?: boolean }) => Promise<User>;
   logout: () => void;
   refresh: () => Promise<void>;
   can: (module: string, action?: string) => boolean;
@@ -50,10 +50,10 @@ const ROLE_PERMISSIONS: Record<string, Permissions> = {
   'asset manager': grant({ ...everything, users: [] }),
   'facility manager': grant({
     tags: V, dashboard: V, assets: [...VCE, 'export'], categories: VCE, locations: VCE, lifecycle: V, organization: V, transfers: VC, audits: VCE, contracts: VCE,
-    disposal: VC, depreciation: V, reports: VX,
+    maintenance: VCE, procurement: [...VCE, 'approve'], disposal: [...VC, 'approve'], depreciation: V, reports: VX, roles: V,
   }),
-  'department manager': grant({ dashboard: V, assets: VX, lifecycle: V, organization: V, transfers: VC, disposal: VC, reports: VX }),
-  technician: grant({ tags: V, dashboard: V, assets: V, lifecycle: V, audits: ['view', 'edit'], contracts: ['view', 'edit'] }),
+  'department manager': grant({ dashboard: V, assets: VX, lifecycle: V, organization: V, transfers: VC, maintenance: VC, disposal: VC, reports: VX }),
+  technician: grant({ tags: V, dashboard: V, assets: V, lifecycle: V, audits: ['view', 'edit'], contracts: ['view', 'edit'], maintenance: VCE }),
   auditor: grant({ tags: V, dashboard: V, assets: VX, locations: V, lifecycle: V, audits: [...VCE, 'export'], reports: VX }),
   employee: grant({ assets: V, lifecycle: V }),
 };
@@ -140,8 +140,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refresh();
   }, [logout, refresh]);
 
-  const login = async (username: string, password: string) => {
-    const res = await authApi.login(username, password);
+  const login = async (username: string, password: string, opts?: { mobile?: boolean }) => {
+    const res = opts?.mobile ? await authApi.mobileLogin(username, password) : await authApi.login(username, password);
     if (!res?.token) throw new Error('Login failed');
     tokenStore.set(res.token);
     const profile = await userApi.get(res.userId).catch(() => null);

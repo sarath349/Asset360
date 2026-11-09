@@ -1,7 +1,7 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 import {
-  ApiAssetType, ApiCategory, ApiDepartment, ApiEmployee, ApiLocation, ApiSubCategory, ApiUser, assetTypeApi, categoryApi, departmentApi,
-  employeeApi, locationApi, subCategoryApi, userApi, userDisplayName,
+  ApiAssetType, ApiCategory, ApiDepartment, ApiEmployee, ApiLocation, ApiSubCategory, ApiSubLocation, ApiUser, assetTypeApi, categoryApi,
+  departmentApi, employeeApi, listAllSublocations, locationApi, subCategoryApi, userApi, userDisplayName,
 } from '../api/assetApi';
 import { useAuth } from './AuthContext';
 
@@ -25,13 +25,18 @@ export interface LookupUser extends ApiUser {
 }
 
 // Real AssetAPI records, plus the string `_id` / `name` fields the shared pickers and tree helpers work with.
-export interface LocationNode extends ApiLocation {
+// Locations and sublocations share one tree: location nodes use numeric ids; sublocation nodes use `s{id}` so id spaces do not collide.
+export interface LocationNode extends Omit<ApiLocation, 'locationId'> {
+  locationId: number;
   _id: string;
   name: string;
   code: string;
   type: string;
   parent: string | null;
   active: boolean;
+  kind: 'location' | 'sublocation';
+  subLocationId?: number;
+  parentLocationId: number | null;
 }
 
 export interface DepartmentNode extends ApiDepartment {
@@ -65,6 +70,16 @@ interface DataState extends Lookups {
 export const categoryNodeId = (id: number | null | undefined) => (id ? `c${id}` : null);
 export const subCategoryNodeId = (id: number | null | undefined) => (id ? `s${id}` : null);
 export const assetTypeNodeId = (id: number | null | undefined) => (id ? `t${id}` : null);
+export const subLocationKey = (id?: number | null) => (id ? `s${id}` : null);
+export const parseSubLocationKey = (key?: string | null) => {
+  if (!key) return null;
+  if (key.startsWith('s')) {
+    const n = Number(key.slice(1));
+    return Number.isFinite(n) ? n : null;
+  }
+  const n = Number(key);
+  return Number.isFinite(n) ? n : null;
+};
 
 function toCategoryNodes(cats: ApiCategory[], subs: ApiSubCategory[], types: ApiAssetType[]): CategoryNode[] {
   const subParent = new Map(subs.map((s) => [s.subCategoryId, s.categoryId || 0]));
@@ -98,10 +113,45 @@ export const toLocationNode = (l: ApiLocation): LocationNode => ({
   _id: String(l.locationId),
   name: l.locationName || l.locationCode || `Location #${l.locationId}`,
   code: l.locationCode || '',
-  type: l.locationType || '',
+  // Swagger locations are branch-level sites; default to Site so BranchContext picks them up.
+  type: l.locationType || 'Site',
   parent: l.parentLocationId ? String(l.parentLocationId) : null,
   active: l.isActive,
+  kind: 'location',
 });
+
+export const toSubLocationNode = (s: ApiSubLocation): LocationNode => {
+  const type = (s.subLocationType || 'Sublocation').trim() || 'Sublocation';
+  return {
+    locationId: s.locationId,
+    parentLocationId: s.locationId,
+    locationCode: s.subLocationCode,
+    locationName: s.subLocationName,
+    locationType: type,
+    description: s.description,
+    departmentId: s.departmentId,
+    costCenter: s.costCenter,
+    latitude: s.latitude,
+    longitude: s.longitude,
+    isActive: s.isActive,
+    createdDate: s.createdDate,
+    updatedDate: s.updatedDate,
+    branchCode: null,
+    branchName: null,
+    _id: `s${s.subLocationId}`,
+    name: s.subLocationName || s.subLocationCode || `Sublocation #${s.subLocationId}`,
+    code: s.subLocationCode || '',
+    type,
+    parent: s.parentSubLocationId ? `s${s.parentSubLocationId}` : String(s.locationId),
+    active: s.isActive,
+    kind: 'sublocation',
+    subLocationId: s.subLocationId,
+  };
+};
+
+function mergeLocationTree(locations: ApiLocation[], sublocations: ApiSubLocation[]): LocationNode[] {
+  return [...locations.map(toLocationNode), ...sublocations.map(toSubLocationNode)];
+}
 
 const toDepartmentNode = (d: ApiDepartment): DepartmentNode => ({
   ...d,
@@ -146,7 +196,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
           .catch(() => undefined)
       );
     load('users', userApi.list, toLookupUser);
-    load('locations', locationApi.list, toLocationNode);
+    if (want('locations'))
+      tasks.push(
+        Promise.all([locationApi.list(), listAllSublocations().catch(() => [] as ApiSubLocation[])])
+          .then(([locs, subs]) => set({ locations: mergeLocationTree(locs, subs) }))
+          .catch(() => undefined)
+      );
     load('departments', departmentApi.list, toDepartmentNode);
     load('employees', employeeApi.list, toEmployeeNode);
     await Promise.all(tasks);
@@ -174,7 +229,16 @@ export function useNames() {
     return list.find((x) => x._id === String(id))?.name || `${prefix} #${id}`;
   };
   return {
-    location: find(locations, 'Location'),
+    location: (id?: number | null) => {
+      if (!id) return '';
+      const loc = locations.find((x) => x.kind === 'location' && x.locationId === id);
+      return loc?.name || `Location #${id}`;
+    },
+    subLocation: (id?: number | null) => {
+      if (!id) return '';
+      const sub = locations.find((x) => x.kind === 'sublocation' && x.subLocationId === id);
+      return sub?.name || `Sublocation #${id}`;
+    },
     department: find(departments, 'Department'),
     employee: find(employees, 'Employee'),
     user: find(users, 'User'),

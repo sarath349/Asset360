@@ -140,6 +140,7 @@ export default function OrganizationPage() {
       setRemove(null);
     } catch (err) {
       toast.error(err);
+      throw err;
     }
   };
 

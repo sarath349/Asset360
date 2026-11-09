@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeftRight, Calculator, GitBranch, ImageIcon, Pencil, Printer, Trash2, TrendingDown } from 'lucide-react';
 import { assetApi, assignmentApi, depreciationApi, depreciationMethodLabel, disposalApi } from '../../api/assetApi';
+import { forgetCachedAsset } from '../../lib/assetLookup';
 import { useFetch } from '../../lib/hooks';
 import { date, dateTime, daysUntil, money } from '../../lib/format';
 import { useAuth } from '../../context/AuthContext';
@@ -111,7 +112,7 @@ export default function AssetDetailPage() {
       <div className="card">
         <div className="hero">
           <div className="hero-photo">
-            <ImageIcon size={34} />
+            {a.images?.[0] ? <img src={a.images[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <ImageIcon size={34} />}
           </div>
           <div className="hero-main">
             <div className="row wrap" style={{ gap: 8 }}>
@@ -130,7 +131,7 @@ export default function AssetDetailPage() {
               </div>
               <div className="kv">
                 <div className="k">Sublocation</div>
-                <div className="v">{names.location(a.subLocationId) || '—'}</div>
+                <div className="v">{names.subLocation(a.subLocationId) || '—'}</div>
               </div>
               <div className="kv">
                 <div className="k">Department</div>
@@ -150,6 +151,12 @@ export default function AssetDetailPage() {
                 <div className="k">AMC</div>
                 <div className="v">
                   <ExpiryBadge d={a.amcEndDate} />
+                </div>
+              </div>
+              <div className="kv">
+                <div className="k">Insurance</div>
+                <div className="v">
+                  <ExpiryBadge d={a.insuranceEndDate} />
                 </div>
               </div>
             </div>
@@ -181,26 +188,34 @@ export default function AssetDetailPage() {
                 ['Serial number', a.serialNumber],
                 ['Brand', a.brand],
                 ['Model', a.model],
+                ['Manufacturer', a.manufacturer],
+                ['Year', a.yearOfManufacture],
+                ['Color', a.color],
+                ['Quantity', a.quantity],
                 ['Category', category],
                 ['Subcategory', subCategory],
                 ['Asset type', assetType],
                 ['Condition', a.condition],
                 ['Ownership type', a.ownershipType],
+                ['Supplier', a.vendorName],
+                ['External tag', a.externalTagNumber ? <span className="mono">{a.externalTagNumber}</span> : null],
+                ['Placed in service', date(a.placedInServiceDate)],
                 ['Custodian employee ID', a.custodianEmployeeId ? <span className="mono">{a.custodianEmployeeId}</span> : null],
                 ['Registered on', dateTime(a.createdDate)],
                 ['Last updated', a.updatedDate ? dateTime(a.updatedDate) : null],
               ]}
             />
-            {(a.description || a.remarks) && (
+            {(a.description || a.remarks || a.specifications) && (
               <>
                 <div className="divider" />
                 {a.description && <div className="small muted">{a.description}</div>}
+                {a.specifications && <div className="small muted mt-sm"><b>Specs:</b> {a.specifications}</div>}
                 {a.remarks && <div className="small muted mt-sm"><b>Remarks:</b> {a.remarks}</div>}
               </>
             )}
           </Card>
           <div className="stack" style={{ gap: 18 }}>
-            <Card title="Purchase, warranty & AMC">
+            <Card title="Purchase, warranty, AMC & insurance">
               <KV
                 items={[
                   ['Purchase date', date(a.purchaseDate)],
@@ -208,17 +223,63 @@ export default function AssetDetailPage() {
                   ['Currency', a.currency],
                   ['Warranty', a.warrantyStartDate || a.warrantyEndDate ? `${date(a.warrantyStartDate)} → ${date(a.warrantyEndDate)}` : null],
                   ['AMC', a.amcStartDate || a.amcEndDate ? `${date(a.amcStartDate)} → ${date(a.amcEndDate)}` : null],
+                  ['Insurance', a.insuranceStartDate || a.insuranceEndDate ? `${date(a.insuranceStartDate)} → ${date(a.insuranceEndDate)}` : null],
+                  ['Insurance policy', a.insurancePolicyNumber ? <span className="mono">{a.insurancePolicyNumber}</span> : null],
                 ]}
               />
             </Card>
-            <Card title="Tags">
+            <Card title="Tags & references">
               <KV
                 items={[
                   ['QR code', <span className="mono">{a.qrCode}</span>],
                   ['RFID', a.rfidTag ? <span className="mono">{a.rfidTag}</span> : null],
+                  ['Ref value 1', a.refValue1],
+                  ['Ref value 2', a.refValue2],
+                  ['Ref value 3', a.refValue3],
                 ]}
               />
             </Card>
+            {(a.latitude != null || a.longitude != null || a.geoAddress) && (
+              <Card title="Geo location">
+                <KV
+                  items={[
+                    ['Latitude', a.latitude != null ? <span className="mono">{a.latitude}</span> : null],
+                    ['Longitude', a.longitude != null ? <span className="mono">{a.longitude}</span> : null],
+                    ['Address', a.geoAddress],
+                    [
+                      'Map',
+                      a.latitude != null && a.longitude != null ? (
+                        <a href={`https://www.google.com/maps?q=${a.latitude},${a.longitude}`} target="_blank" rel="noreferrer">
+                          Open in Google Maps
+                        </a>
+                      ) : null,
+                    ],
+                  ]}
+                />
+              </Card>
+            )}
+            {!!(a.images?.length || a.documents?.length) && (
+              <Card title="Images & documents">
+                {!!a.images?.length && (
+                  <div className="row wrap" style={{ gap: 8, marginBottom: a.documents?.length ? 12 : 0 }}>
+                    {a.images.map((src, i) => (
+                      <a key={i} href={src} target="_blank" rel="noreferrer" style={{ width: 72, height: 72, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                        <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      </a>
+                    ))}
+                  </div>
+                )}
+                {!!a.documents?.length && (
+                  <div className="stack" style={{ gap: 6 }}>
+                    {a.documents.map((d, i) => (
+                      <a key={`${d.name}-${i}`} href={d.dataUrl} download={d.name} className="small">
+                        {d.name}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            )}
           </div>
         </div>
       )}
@@ -246,10 +307,14 @@ export default function AssetDetailPage() {
         onConfirm={async () => {
           try {
             await assetApi.remove(a.assetId);
+            forgetCachedAsset(a.assetId);
             toast.success('Asset deleted');
-            navigate('/assets');
+            setModal(null);
+            // Replace so back-button does not revive the deleted detail from history cache.
+            navigate('/assets', { replace: true, state: { assetDeleted: a.assetId } });
           } catch (err) {
             toast.error(err);
+            throw err;
           }
         }}
       />

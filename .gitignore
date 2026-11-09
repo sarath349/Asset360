@@ -1,6 +1,12 @@
 node_modules
 dist
+release
+server/node_modules
+server/uploads/*
+!server/uploads/.gitkeep
 *.tsbuildinfo
 *.zip
 .env*
+!.env.example
+server/.env
 .DS_Store

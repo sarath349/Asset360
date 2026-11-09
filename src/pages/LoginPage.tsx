@@ -14,13 +14,16 @@ export default function LoginPage() {
 
   if (user) return <Navigate to={location.state?.from || '/'} replace />;
 
+  const from = location.state?.from || '/';
+  const mobileLogin = from === '/m' || from.startsWith('/m/');
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError('');
     try {
-      await login(username.trim(), password);
-      navigate(location.state?.from || '/', { replace: true });
+      await login(username.trim(), password, { mobile: mobileLogin });
+      navigate(from, { replace: true });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -57,7 +60,7 @@ export default function LoginPage() {
         <form className="login-form" onSubmit={submit}>
           <h2 style={{ fontSize: 26, fontWeight: 800 }}>Welcome back</h2>
           <p className="muted" style={{ marginTop: 6 }}>
-            Sign in to your AssetPro workspace
+            {mobileLogin ? 'Sign in to the AssetPro mobile app' : 'Sign in to your AssetPro workspace'}
           </p>
           <div className="stack mt">
             <div className="field">

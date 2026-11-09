@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, ArrowLeftRight, Bell, Camera, ClipboardCheck, CloudOff, History, Home, ImagePlus, Package, ScanLine, UserCog, Wrench, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowLeftRight, Bell, Camera, ClipboardCheck, CloudOff, History, Home, ImagePlus, Package, ScanLine, UserCog, X } from 'lucide-react';
 import { ApiAsset } from '../api/assetApi';
 import { getQueue, QueuedAction, subscribeQueue } from '../api/offline';
 import { useAuth } from '../context/AuthContext';
@@ -26,7 +26,6 @@ export const MENU: MenuItem[] = [
   { key: 'home', to: '/m', label: 'Home Dashboard', icon: <Home size={20} /> },
   { key: 'scan', to: '/m/scan', label: 'Scan Asset', icon: <ScanLine size={20} /> },
   { key: 'mine', to: '/m/mine', label: 'My Assigned Assets', icon: <Package size={20} /> },
-  { key: 'maintenance', to: '/m/maintenance', label: 'Maintenance Tasks', icon: <Wrench size={20} />, roles: ['technician'] },
   { key: 'inspection', to: '/m/inspection', label: 'Asset Inspection', icon: <ClipboardCheck size={20} />, roles: ['technician', 'auditor'] },
   { key: 'transfer', to: '/m/transfer', label: 'Transfer / Handover', icon: <ArrowLeftRight size={20} />, roles: ['department manager'] },
   { key: 'incident', to: '/m/incident', label: 'Report an Incident', icon: <AlertTriangle size={20} /> },

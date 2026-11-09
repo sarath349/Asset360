@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { CheckCircle2, Printer, QrCode, Radio, ScanBarcode, Tag } from 'lucide-react';
-import { ApiAsset, assetApi } from '../api/assetApi';
+import { CheckCircle2, Printer, QrCode, Radio, ScanBarcode, Settings2, Tag } from 'lucide-react';
+import { ApiAsset, ApiLabelTemplate, assetApi, labelTemplateApi } from '../api/assetApi';
 import { useFetch } from '../lib/hooks';
 import { printLabels } from '../lib/labels';
 import { useBranch } from '../context/BranchContext';
 import { useData } from '../context/DataContext';
 import { useToast } from '../context/ToastContext';
 import { descendantIds } from '../lib/tree';
-import { Card, Empty, ErrorState, Kpi, Loading, PageHeader, SearchInput, Segmented } from '../components/ui';
+import { Card, Empty, ErrorState, Field, Kpi, Loading, Modal, PageHeader, SearchInput, Segmented, Switch } from '../components/ui';
 import { LocationPicker, SearchSelect } from '../components/pickers';
 import { AssetLabel } from '../components/codes';
 
@@ -21,8 +21,17 @@ export default function TagsPage() {
   const [q, setQ] = useState('');
   const [category, setCategory] = useState<string | null>(null);
   const [location, setLocation] = useState<string | null>(null);
+  const [templateId, setTemplateId] = useState<string | null>(null);
+  const [editTpl, setEditTpl] = useState<Partial<ApiLabelTemplate> | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set(params.get('ids')?.split(',').map(Number).filter(Boolean) || []));
   const { data, loading, error, reload } = useFetch(() => assetApi.list(), []);
+  const { data: templates, reload: reloadTpl } = useFetch(() => labelTemplateApi.list().catch(() => [] as ApiLabelTemplate[]), []);
+
+  const activeTemplate = useMemo(() => {
+    const list = templates || [];
+    if (templateId) return list.find((t) => String(t.templateId) === templateId) || null;
+    return list.find((t) => t.isDefault) || list[0] || null;
+  }, [templates, templateId]);
 
   const list = useMemo(() => {
     let l = (data || []).filter((a) => inScope(a.locationId));
@@ -50,7 +59,21 @@ export default function TagsPage() {
 
   const print = async () => {
     try {
-      await printLabels(chosen.map(labelOf), mode, activeBranch?.name);
+      const tpl = activeTemplate;
+      await printLabels(chosen.map(labelOf), tpl?.mode || mode, activeBranch?.name, tpl || undefined);
+    } catch (err) {
+      toast.error(err);
+    }
+  };
+
+  const saveTemplate = async () => {
+    if (!editTpl?.name?.trim()) return toast.error('Template name is required');
+    try {
+      if (editTpl.templateId) await labelTemplateApi.update(editTpl.templateId, editTpl);
+      else await labelTemplateApi.create(editTpl);
+      setEditTpl(null);
+      await reloadTpl();
+      toast.success('Template saved');
     } catch (err) {
       toast.error(err);
     }
@@ -62,11 +85,35 @@ export default function TagsPage() {
     <>
       <PageHeader
         title="QR / Barcode Labels"
-        subtitle="Select assets and print their labels. The QR opens the asset when scanned; the barcode holds the asset code."
+        subtitle="Select assets and print their labels. Choose a template for size and fields, or edit templates."
         actions={
-          <button className="btn btn-primary" disabled={!chosen.length} onClick={print}>
-            <Printer size={16} /> Print {chosen.length || ''} label{chosen.length === 1 ? '' : 's'}
-          </button>
+          <>
+            <button
+              className="btn"
+              onClick={() =>
+                setEditTpl(
+                  activeTemplate || {
+                    name: 'New template',
+                    mode: 'both',
+                    widthMm: 78,
+                    heightMm: 34,
+                    showCompany: true,
+                    showName: true,
+                    showRfid: true,
+                    showBarcode: true,
+                    showQr: true,
+                    companyPrefix: 'Property of',
+                    isDefault: false,
+                  }
+                )
+              }
+            >
+              <Settings2 size={16} /> Templates
+            </button>
+            <button className="btn btn-primary" disabled={!chosen.length} onClick={print}>
+              <Printer size={16} /> Print {chosen.length || ''} label{chosen.length === 1 ? '' : 's'}
+            </button>
+          </>
         }
       />
       <div className="grid grid-kpi mb no-print">
@@ -86,6 +133,16 @@ export default function TagsPage() {
               placeholder="Any category"
             />
             <LocationPicker value={location} onChange={setLocation} placeholder="Any location" />
+            <SearchSelect
+              options={(templates || []).map((t) => ({ value: String(t.templateId), label: t.name + (t.isDefault ? ' (default)' : '') }))}
+              value={activeTemplate ? String(activeTemplate.templateId) : null}
+              onChange={(v) => {
+                setTemplateId(v);
+                const t = (templates || []).find((x) => String(x.templateId) === v);
+                if (t?.mode) setMode(t.mode);
+              }}
+              placeholder="Label template"
+            />
             <div className="row-between">
               <span className="small muted">{list.length} shown</span>
               <div className="row" style={{ gap: 4 }}>
@@ -113,7 +170,7 @@ export default function TagsPage() {
         <div className="span-2">
           <Card
             title="Label preview"
-            subtitle={`${chosen.length} label${chosen.length === 1 ? '' : 's'}`}
+            subtitle={`${chosen.length} label${chosen.length === 1 ? '' : 's'}${activeTemplate ? ` · ${activeTemplate.name}` : ''}`}
             actions={<Segmented value={mode} onChange={(v) => setMode(v as any)} options={[{ value: 'qr', label: 'QR' }, { value: 'barcode', label: 'Barcode' }, { value: 'both', label: 'QR + Barcode' }]} />}
           >
             {chosen.length ? (
@@ -129,6 +186,64 @@ export default function TagsPage() {
           </Card>
         </div>
       </div>
+
+      <Modal
+        open={!!editTpl}
+        onClose={() => setEditTpl(null)}
+        title={editTpl?.templateId ? 'Edit label template' : 'Label template'}
+        footer={
+          <>
+            <button className="btn" onClick={() => setEditTpl(null)}>Cancel</button>
+            {!editTpl?.templateId && (
+              <button className="btn" onClick={() => setEditTpl({ name: 'New template', mode: 'both', widthMm: 78, heightMm: 34, showCompany: true, showName: true, showRfid: true, showBarcode: true, showQr: true, companyPrefix: 'Property of', isDefault: false })}>
+                New blank
+              </button>
+            )}
+            <button className="btn btn-primary" onClick={saveTemplate}>Save template</button>
+          </>
+        }
+      >
+        {editTpl && (
+          <div className="stack">
+            {(templates || []).length > 0 && (
+              <Field label="Load existing">
+                <select
+                  className="select"
+                  value={editTpl.templateId || ''}
+                  onChange={(e) => {
+                    const t = (templates || []).find((x) => String(x.templateId) === e.target.value);
+                    if (t) setEditTpl(t);
+                  }}
+                >
+                  <option value="">Current draft</option>
+                  {(templates || []).map((t) => (
+                    <option key={t.templateId} value={t.templateId}>{t.name}</option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            <Field label="Name"><input className="input" value={editTpl.name || ''} onChange={(e) => setEditTpl({ ...editTpl, name: e.target.value })} /></Field>
+            <div className="grid grid-2">
+              <Field label="Width (mm)"><input type="number" className="input" value={editTpl.widthMm ?? 78} onChange={(e) => setEditTpl({ ...editTpl, widthMm: Number(e.target.value) || 78 })} /></Field>
+              <Field label="Height (mm)"><input type="number" className="input" value={editTpl.heightMm ?? 34} onChange={(e) => setEditTpl({ ...editTpl, heightMm: Number(e.target.value) || 34 })} /></Field>
+              <Field label="Mode">
+                <select className="select" value={editTpl.mode || 'both'} onChange={(e) => setEditTpl({ ...editTpl, mode: e.target.value as ApiLabelTemplate['mode'] })}>
+                  <option value="qr">QR</option>
+                  <option value="barcode">Barcode</option>
+                  <option value="both">QR + Barcode</option>
+                </select>
+              </Field>
+              <Field label="Company prefix"><input className="input" value={editTpl.companyPrefix || ''} onChange={(e) => setEditTpl({ ...editTpl, companyPrefix: e.target.value })} /></Field>
+            </div>
+            <label className="checkbox"><Switch checked={!!editTpl.showCompany} onChange={(v) => setEditTpl({ ...editTpl, showCompany: v })} /> Show company line</label>
+            <label className="checkbox"><Switch checked={!!editTpl.showName} onChange={(v) => setEditTpl({ ...editTpl, showName: v })} /> Show asset name</label>
+            <label className="checkbox"><Switch checked={!!editTpl.showQr} onChange={(v) => setEditTpl({ ...editTpl, showQr: v })} /> Show QR</label>
+            <label className="checkbox"><Switch checked={!!editTpl.showBarcode} onChange={(v) => setEditTpl({ ...editTpl, showBarcode: v })} /> Show barcode</label>
+            <label className="checkbox"><Switch checked={!!editTpl.showRfid} onChange={(v) => setEditTpl({ ...editTpl, showRfid: v })} /> Show RFID</label>
+            <label className="checkbox"><Switch checked={!!editTpl.isDefault} onChange={(v) => setEditTpl({ ...editTpl, isDefault: v })} /> Default template</label>
+          </div>
+        )}
+      </Modal>
     </>
   );
 }

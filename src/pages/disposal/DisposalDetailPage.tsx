@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { CheckCircle2, ExternalLink, Trash2, XCircle } from 'lucide-react';
-import { ApiDisposal, assetApi, DISPOSAL_METHODS, disposalApi, nowIso } from '../../api/assetApi';
+import { ApiDisposal, approvalLevelApi, assetApi, DISPOSAL_METHODS, disposalApi, nowIso } from '../../api/assetApi';
+import { forgetCachedAsset } from '../../lib/assetLookup';
 import { useFetch } from '../../lib/hooks';
 import { date, dateTime, money, toInputDate } from '../../lib/format';
 import { useAuth } from '../../context/AuthContext';
@@ -29,22 +30,35 @@ export default function DisposalDetailPage() {
   const { data, loading, error, reload } = useFetch(async () => {
     const d = await disposalApi.get(id!);
     const asset = await assetApi.get(d.assetId).catch(() => null);
-    return { d, asset };
+    const levels = await approvalLevelApi.list('disposal').catch(() => []);
+    return { d, asset, levels: levels.filter((l) => l.isActive).sort((a, b) => a.stepOrder - b.stepOrder) };
   }, [id]);
   const [modal, setModal] = useState<'approve' | 'reject' | 'complete' | null>(null);
 
   if (loading && !data) return <Loading />;
   if (error || !data) return <ErrorState message={error || 'Disposal request not found'} onRetry={reload} />;
-  const { d, asset } = data;
+  const { d, asset, levels } = data;
   const stage = disposalStage(d);
+  const requiredRole = levels[0]?.role || null;
+  const roleOk = !requiredRole || !user?.role || user.role.trim().toLowerCase() === requiredRole.trim().toLowerCase() || /admin/i.test(user.role);
 
   const decide = async (approve: boolean, remarks: string) => {
     try {
+      if (approve && !roleOk) {
+        toast.error(`This step requires role “${requiredRole}”`);
+        return;
+      }
       const body: ApiDisposal = { ...d, approvalStatus: approve ? 'Approved' : 'Rejected', approvedBy: user?.userId || null, approvalDate: nowIso(), approvalRemarks: remarks || null, updatedDate: nowIso() };
       await (approve ? disposalApi.approve(body) : disposalApi.reject(body));
-      toast.success(approve ? 'Request approved' : 'Request rejected');
       setModal(null);
-      reload();
+      await reload();
+      if (approve) {
+        // Approve alone does not remove the asset — guide straight into completion.
+        toast.success('Approved. Complete disposal to retire the asset from the register.');
+        setModal('complete');
+      } else {
+        toast.success('Request rejected');
+      }
     } catch (err) {
       toast.error(err);
     }
@@ -78,7 +92,9 @@ export default function DisposalDetailPage() {
                 </>
               )}
               {stage === 'approved' && (
-                <button className="btn btn-danger" onClick={() => setModal('complete')}><Trash2 size={16} /> Complete disposal</button>
+                <button className="btn btn-danger" onClick={() => setModal('complete')} title="This retires the asset (status → Disposed)">
+                  <Trash2 size={16} /> Complete disposal
+                </button>
               )}
             </>
           )
@@ -104,6 +120,8 @@ export default function DisposalDetailPage() {
             <KV
               items={[
                 ['Status', <StatusBadge status={d.approvalStatus || 'Pending'} />],
+                ['Required role', requiredRole || 'Any approver'],
+                ['Approval levels', levels.length ? levels.map((l) => `${l.levelCode} ${l.levelName}`).join(' → ') : 'Default (single step)'],
                 ['Decided by', names.user(d.approvedBy)],
                 ['Decided on', d.approvalDate ? dateTime(d.approvalDate) : null],
                 ['Remarks', d.approvalRemarks],
@@ -189,7 +207,8 @@ function CompleteModal({ disposal, onClose, onDone }: { disposal: ApiDisposal; o
     setBusy(true);
     try {
       await disposalApi.complete({ ...f, disposalValue: f.disposalValue === null || String(f.disposalValue) === '' ? null : Number(f.disposalValue), updatedDate: nowIso() });
-      toast.success('Disposal completed');
+      forgetCachedAsset(disposal.assetId);
+      toast.success('Disposal completed — asset marked Disposed and hidden from the active register');
       onDone();
     } catch (err) {
       toast.error(err);
@@ -210,6 +229,9 @@ function CompleteModal({ disposal, onClose, onDone }: { disposal: ApiDisposal; o
         </>
       }
     >
+      <div className="alert alert-warn mb" style={{ fontSize: 13 }}>
+        Approving only signed off the request. Completing disposal sets the asset status to <b>Disposed</b> and removes it from the active asset list.
+      </div>
       <div className="form-grid">
         <Field label="Disposal method" required>
           <select className="select" value={f.disposalMethod || ''} onChange={(e) => set('disposalMethod', e.target.value)}>

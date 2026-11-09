@@ -75,17 +75,17 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
     for (const a of assets || []) {
       if (!inScope(a.locationId)) continue;
-      for (const [kind, d] of [['warranty', a.warrantyEndDate], ['amc', a.amcEndDate]] as const) {
+      for (const [kind, d] of [['warranty', a.warrantyEndDate], ['amc', a.amcEndDate], ['insurance', a.insuranceEndDate]] as const) {
         const n = daysUntil(d);
         if (n === null || n > 30 || n < -14) continue;
-        const label = kind === 'amc' ? 'AMC' : 'Warranty';
+        const label = kind === 'amc' ? 'AMC' : kind === 'insurance' ? 'Insurance' : 'Warranty';
         out.push({
           id: `${kind}-${a.assetId}-${(d || '').slice(0, 10)}`,
           title: n < 0 ? `${label} expired: ${a.assetName || a.assetCode}` : `${label} expires in ${n} day${n === 1 ? '' : 's'}`,
           detail: `${a.assetName || '(unnamed)'} · ${a.assetCode}`,
           urgency: n < 0 ? 60 : 100 - n,
           tone: n < 0 ? 'red' : n <= 7 ? 'red' : 'amber',
-          icon: kind,
+          icon: kind === 'insurance' ? 'warranty' : kind,
           to: `/m/asset/${a.assetId}`,
         });
       }

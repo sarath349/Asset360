@@ -1,9 +1,16 @@
 import { del, get, post, put } from './client';
 
-// Typed wrappers for the AssetAPI backend (https://assetapi.secureworldme.com/swagger).
+// Typed wrappers for the Asset360 API (Node+Mongo local/on-prem, or compatible cloud API).
 
 type Id = number | string;
 type Range = { fromDate?: string; toDate?: string };
+
+export interface ApiAssetDocument {
+  name: string;
+  type: string | null;
+  dataUrl: string;
+  uploadedDate: string | null;
+}
 
 export interface ApiAsset {
   assetId: number;
@@ -17,14 +24,28 @@ export interface ApiAsset {
   serialNumber: string | null;
   brand: string | null;
   model: string | null;
+  manufacturer: string | null;
+  yearOfManufacture: number | null;
+  color: string | null;
+  specifications: string | null;
+  quantity: number | null;
   purchaseDate: string | null;
   purchaseCost: number | null;
   currency: string | null;
   vendorId: number | null;
+  vendorName: string | null;
   warrantyStartDate: string | null;
   warrantyEndDate: string | null;
   amcStartDate: string | null;
   amcEndDate: string | null;
+  insuranceStartDate: string | null;
+  insuranceEndDate: string | null;
+  insurancePolicyNumber: string | null;
+  externalTagNumber: string | null;
+  placedInServiceDate: string | null;
+  refValue1: string | null;
+  refValue2: string | null;
+  refValue3: string | null;
   locationId: number | null;
   subLocationId: number | null;
   departmentId: number | null;
@@ -35,6 +56,11 @@ export interface ApiAsset {
   ownershipType: string | null;
   qrCode: string | null;
   rfidTag: string | null;
+  images: string[];
+  documents: ApiAssetDocument[];
+  latitude: number | null;
+  longitude: number | null;
+  geoAddress: string | null;
   createdDate: string | null;
   updatedDate: string | null;
 }
@@ -76,7 +102,10 @@ export interface ApiUser {
   role: string | null;
   phone: string | null;
   departmentId: number | null;
+  organizationId?: number | null;
+  locationId?: number | null;
   isActive: boolean;
+  isMobileAppUser?: boolean;
   createdDate: string;
   lastLogin: string | null;
 }
@@ -86,6 +115,8 @@ export interface ApiLocation {
   parentLocationId: number | null;
   locationCode: string | null;
   locationName: string | null;
+  branchCode?: string | null;
+  branchName?: string | null;
   locationType: string | null;
   description: string | null;
   departmentId: number | null;
@@ -95,6 +126,31 @@ export interface ApiLocation {
   isActive: boolean;
   createdDate: string;
   updatedDate: string | null;
+}
+
+export interface ApiSubLocation {
+  subLocationId: number;
+  locationId: number;
+  parentSubLocationId: number | null;
+  subLocationCode: string | null;
+  subLocationName: string | null;
+  subLocationType: string | null;
+  description: string | null;
+  departmentId: number | null;
+  costCenter: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  isActive: boolean;
+  createdDate: string;
+  updatedDate: string | null;
+}
+
+export interface ApiBranch {
+  branchCode: string;
+  branchName: string;
+  locationId: number;
+  locationCode?: string | null;
+  locationName?: string | null;
 }
 
 export interface ApiDepartment {
@@ -308,6 +364,7 @@ export interface LoginResponse {
   userId: number;
   username: string;
   role: string | null;
+  isMobileAppUser?: boolean;
 }
 
 // The backend stores DateTime columns that are not nullable, so new records always carry a timestamp.
@@ -325,6 +382,7 @@ function crud<T>(path: string, idKey: keyof T & string) {
 
 export const authApi = {
   login: (username: string, password: string) => post<LoginResponse>('/auth/login', { username, password }),
+  mobileLogin: (username: string, password: string) => post<LoginResponse>('/auth/mobile-login', { username, password }),
 };
 
 export const assetApi = {
@@ -334,6 +392,7 @@ export const assetApi = {
   create: (a: Partial<ApiAsset>) => post<ApiAsset>('/assets', { ...a, assetId: 0 }),
   update: (id: Id, a: Partial<ApiAsset>) => put<ApiAsset>(`/assets/${id}`, { ...a, assetId: Number(id) }),
   remove: (id: Id) => del<string>(`/assets/${id}`),
+  bulk: (assets: Partial<ApiAsset>[]) => post<{ created: number; assets: ApiAsset[]; errors: { row: number; message: string }[] }>('/assets/bulk', { assets }),
 };
 
 export const categoryApi = {
@@ -372,7 +431,22 @@ export const userApi = {
 export const locationApi = {
   ...crud<ApiLocation>('/locations', 'locationId'),
   byParent: (parentId: Id) => get<ApiLocation[]>(`/locations/by-parent/${parentId}`),
+  branches: () => get<ApiBranch[]>('/locations/branches'),
+  sublocations: (locationId: Id) => get<ApiSubLocation[]>(`/locations/${locationId}/sublocations`),
+  createSublocation: (locationId: Id, s: Partial<ApiSubLocation>) =>
+    post<ApiSubLocation>(`/locations/${locationId}/sublocations`, { subLocationId: 0, createdDate: nowIso(), ...s }),
+  getSublocation: (id: Id) => get<ApiSubLocation>(`/locations/sublocations/${id}`),
+  updateSublocation: (id: Id, s: Partial<ApiSubLocation>) =>
+    put<ApiSubLocation>(`/locations/sublocations/${id}`, { ...s, subLocationId: Number(id), updatedDate: nowIso() }),
+  removeSublocation: (id: Id) => del<string>(`/locations/sublocations/${id}`),
 };
+
+/** Load every sublocation under every location (for pickers / tree). */
+export async function listAllSublocations(): Promise<ApiSubLocation[]> {
+  const locations = await locationApi.list();
+  const chunks = await Promise.all(locations.map((l) => locationApi.sublocations(l.locationId).catch(() => [] as ApiSubLocation[])));
+  return chunks.flat();
+}
 
 export const departmentApi = crud<ApiDepartment>('/departments', 'departmentId');
 
@@ -457,6 +531,7 @@ export const reportApi = {
   assetsByLocation: () => get<any>('/reports/assets-by-location'),
   assetsByCategory: () => get<any>('/reports/assets-by-category'),
   assetValue: () => get<any>('/reports/asset-value'),
+  assetLifecycle: () => get<any>('/reports/asset-lifecycle'),
   warrantyExpiry: (r: Range = {}) => get<any>('/reports/warranty-expiry', r),
   amcExpiry: (r: Range = {}) => get<any>('/reports/amc-expiry', r),
   depreciation: (r: Range = {}) => get<any>('/reports/depreciation', r),
@@ -464,11 +539,155 @@ export const reportApi = {
   disposals: (r: Range = {}) => get<any>('/reports/disposals', r),
 };
 
+export interface ApiSparePart {
+  name: string;
+  qty: number;
+  cost?: number;
+}
+
+export interface ApiMaintenanceJob {
+  jobId: number;
+  clientId: string | null;
+  kind: 'maintenance' | 'fault' | 'incident';
+  type: string;
+  assetId: number | null;
+  assetCode: string | null;
+  assetName: string | null;
+  locationId: number | null;
+  title: string | null;
+  description: string | null;
+  priority: string;
+  status: string;
+  createdBy: number | null;
+  createdByName: string | null;
+  dueDate: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  laborHours: number | null;
+  spareParts: ApiSparePart[];
+  notes: string | null;
+  beforePhotos: string[];
+  afterPhotos: string[];
+  photos: string[];
+  gps: string | null;
+  prevAssetStatus: string | null;
+  createdDate: string;
+  updatedDate: string | null;
+}
+
+export const maintenanceApi = {
+  list: () => get<ApiMaintenanceJob[]>('/maintenance'),
+  get: (id: Id) => get<ApiMaintenanceJob>(`/maintenance/${id}`),
+  create: (j: Partial<ApiMaintenanceJob>) => post<ApiMaintenanceJob>('/maintenance', { jobId: 0, createdDate: nowIso(), spareParts: [], beforePhotos: [], afterPhotos: [], photos: [], ...j }),
+  update: (id: Id, j: Partial<ApiMaintenanceJob>) => put<ApiMaintenanceJob>(`/maintenance/${id}`, { ...j, jobId: Number(id), updatedDate: nowIso() }),
+  start: (id: Id, body: { markAsset?: boolean } = {}) => post<ApiMaintenanceJob>(`/maintenance/start/${id}`, body),
+  complete: (id: Id, body: Partial<ApiMaintenanceJob> & { markAsset?: boolean } = {}) => post<ApiMaintenanceJob>(`/maintenance/complete/${id}`, body),
+  cancel: (id: Id, body: Partial<ApiMaintenanceJob> = {}) => post<ApiMaintenanceJob>(`/maintenance/cancel/${id}`, body),
+  remove: (id: Id) => del<string>(`/maintenance/${id}`),
+};
+
+export interface ApiReceiptLine {
+  lineId?: number;
+  assetName: string | null;
+  categoryId: number | null;
+  subCategoryId?: number | null;
+  assetTypeId?: number | null;
+  qty: number;
+  unitCost?: number | null;
+  currency?: string | null;
+  brand?: string | null;
+  model?: string | null;
+  serialNumbers?: string[];
+  condition?: string | null;
+  ownershipType?: string | null;
+}
+
+export interface ApiReceipt {
+  receiptId: number;
+  receiptNumber: string;
+  vendorName: string | null;
+  poNumber: string | null;
+  receiptDate: string;
+  receivedBy: number | null;
+  locationId: number | null;
+  departmentId: number | null;
+  remarks: string | null;
+  approvalStatus: string;
+  approvedBy: number | null;
+  approvalDate: string | null;
+  approvalRemarks: string | null;
+  lines: ApiReceiptLine[];
+  postedAssetIds: number[];
+  createdDate: string;
+  updatedDate: string | null;
+}
+
+export const receiptApi = {
+  list: () => get<ApiReceipt[]>('/receipts'),
+  get: (id: Id) => get<ApiReceipt>(`/receipts/${id}`),
+  create: (r: Partial<ApiReceipt>) =>
+    post<ApiReceipt>('/receipts', { receiptId: 0, receiptDate: nowIso(), createdDate: nowIso(), approvalStatus: 'Pending', lines: [], postedAssetIds: [], ...r }),
+  update: (id: Id, r: Partial<ApiReceipt>) => put<ApiReceipt>(`/receipts/${id}`, { ...r, receiptId: Number(id), updatedDate: nowIso() }),
+  approve: (id: Id, r: Partial<ApiReceipt> = {}) => post<ApiReceipt>(`/receipts/approve/${id}`, r),
+  reject: (id: Id, r: Partial<ApiReceipt> = {}) => post<ApiReceipt>(`/receipts/reject/${id}`, r),
+  post: (id: Id) => post<ApiReceipt>(`/receipts/post/${id}`),
+  remove: (id: Id) => del<string>(`/receipts/${id}`),
+};
+
+export interface ApiApprovalLevel {
+  approvalLevelId: number;
+  levelCode: string | null;
+  levelName: string | null;
+  module: string;
+  stepOrder: number;
+  role: string | null;
+  minAmount: number | null;
+  isActive: boolean;
+  createdDate: string;
+  updatedDate: string | null;
+  createdBy: number | null;
+}
+
+export const approvalLevelApi = {
+  list: (module?: string) => get<ApiApprovalLevel[]>('/approvallevels', module ? { module } : undefined),
+  get: (id: Id) => get<ApiApprovalLevel>(`/approvallevels/${id}`),
+  create: (a: Partial<ApiApprovalLevel>) => post<ApiApprovalLevel>('/approvallevels', { approvalLevelId: 0, createdDate: nowIso(), isActive: true, stepOrder: 1, ...a }),
+  update: (id: Id, a: Partial<ApiApprovalLevel>) => put<ApiApprovalLevel>(`/approvallevels/${id}`, { ...a, approvalLevelId: Number(id), updatedDate: nowIso() }),
+  remove: (id: Id) => del<string>(`/approvallevels/${id}`),
+};
+
+export interface ApiLabelTemplate {
+  templateId: number;
+  name: string;
+  mode: 'qr' | 'barcode' | 'both';
+  widthMm: number;
+  heightMm: number;
+  showCompany: boolean;
+  showName: boolean;
+  showRfid: boolean;
+  showBarcode: boolean;
+  showQr: boolean;
+  companyPrefix: string | null;
+  isDefault: boolean;
+  createdDate: string;
+  updatedDate: string | null;
+}
+
+export const labelTemplateApi = {
+  list: () => get<ApiLabelTemplate[]>('/labeltemplates'),
+  get: (id: Id) => get<ApiLabelTemplate>(`/labeltemplates/${id}`),
+  create: (t: Partial<ApiLabelTemplate>) => post<ApiLabelTemplate>('/labeltemplates', { templateId: 0, createdDate: nowIso(), ...t }),
+  update: (id: Id, t: Partial<ApiLabelTemplate>) => put<ApiLabelTemplate>(`/labeltemplates/${id}`, { ...t, templateId: Number(id), updatedDate: nowIso() }),
+  remove: (id: Id) => del<string>(`/labeltemplates/${id}`),
+};
+
 export const ASSET_STATUSES = ['In Store', 'Active', 'In Repair', 'Under Maintenance', 'Missing', 'Damaged', 'Retired', 'Disposed'];
 
 export const USER_ROLES = ['Super Admin', 'Admin', 'Asset Manager', 'Facility Manager', 'Department Manager', 'Technician', 'Auditor', 'Employee'];
 
 export const LOCATION_TYPES = ['Company', 'Site', 'Building', 'Floor', 'Area', 'Location', 'Sublocation', 'Room', 'Zone', 'Rack'];
+
+export const SUB_LOCATION_TYPES = ['Building', 'Floor', 'Area', 'Sublocation', 'Room', 'Zone', 'Rack'];
 
 export const CONTRACT_TYPES = ['AMC', 'CMC', 'Warranty', 'Extended Warranty', 'Service', 'Lease'];
 

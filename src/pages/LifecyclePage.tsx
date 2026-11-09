@@ -112,6 +112,8 @@ function useEvents(h: History | null) {
     add({ key: 'w-end', at: a.warrantyEndDate, kind: 'coverage', title: valid(a.warrantyEndDate) && isFuture(a.warrantyEndDate) ? 'Warranty ends' : 'Warranty expired', icon: <ShieldCheck size={13} />, tone: 'amber' });
     add({ key: 'amc-start', at: a.amcStartDate, kind: 'coverage', title: 'AMC started', icon: <ShieldCheck size={13} />, tone: 'cyan' });
     add({ key: 'amc-end', at: a.amcEndDate, kind: 'coverage', title: valid(a.amcEndDate) && isFuture(a.amcEndDate) ? 'AMC ends' : 'AMC expired', icon: <ShieldCheck size={13} />, tone: 'amber' });
+    add({ key: 'ins-start', at: a.insuranceStartDate, kind: 'coverage', title: 'Insurance started', details: a.insurancePolicyNumber || undefined, icon: <ShieldCheck size={13} />, tone: 'blue' });
+    add({ key: 'ins-end', at: a.insuranceEndDate, kind: 'coverage', title: valid(a.insuranceEndDate) && isFuture(a.insuranceEndDate) ? 'Insurance ends' : 'Insurance expired', details: a.insurancePolicyNumber || undefined, icon: <ShieldCheck size={13} />, tone: 'amber' });
 
     for (const t of h.assignments) {
       const type = (t.transactionType || '').toLowerCase().replace(/[^a-z]/g, '');

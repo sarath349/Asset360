@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
-  Boxes, CalendarClock, CheckCircle2, ClipboardCheck, DollarSign, FileWarning, MapPinOff, Plus, ShieldAlert, Trash2, Wrench,
+  Boxes, CalendarClock, CheckCircle2, ClipboardCheck, DollarSign, FileWarning, MapPinOff, Plus, Shield, ShieldAlert, Trash2, Wrench,
 } from 'lucide-react';
 import { ApiAsset, ApiAuditCampaign, ApiDashboard, ApiDisposal, ChartPoint, assetApi, auditApi, dashboardApi, disposalApi } from '../api/assetApi';
 import { useFetch } from '../lib/hooks';
@@ -38,17 +38,80 @@ const monthLabel = (m: string) => {
 
 function MonthlyBars({ data, color, name, currency }: { data: ChartPoint[]; color: string; name: string; currency?: boolean }) {
   if (!data?.length) return <Empty title="Nothing scheduled" />;
+  const max = Math.max(...data.map((d) => d.value || 0), 0);
+  // Counts must stay whole numbers — with small values Recharts otherwise ticks 0.25 / 0.5 / 0.75.
+  const countDomain: [number, number] | undefined = currency ? undefined : [0, Math.max(4, Math.ceil(max))];
   return (
     <ResponsiveContainer width="100%" height={220}>
       <BarChart data={data.map((d) => ({ ...d, label: monthLabel(d.label) }))} margin={{ left: -14 }}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eef1f6" />
         <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={11} />
-        <YAxis tickLine={false} axisLine={false} fontSize={11} tickFormatter={(v) => (currency ? money(v, { compact: true }).replace(/^\w+ /, '') : v)} />
+        <YAxis
+          tickLine={false}
+          axisLine={false}
+          fontSize={11}
+          allowDecimals={false}
+          domain={countDomain}
+          tickCount={currency ? undefined : Math.min(6, (countDomain?.[1] || 4) + 1)}
+          tickFormatter={(v) => (currency ? money(v, { compact: true }).replace(/^\w+ /, '') : String(Math.round(v)))}
+        />
         <Tooltip formatter={(v: number) => (currency ? money(v) : num(v))} />
         <Bar dataKey="value" name={name} fill={color} radius={[6, 6, 0, 0]} maxBarSize={30} />
       </BarChart>
     </ResponsiveContainer>
   );
+}
+
+/** Exclusive bands: 21–30, 11–20, 0–10 days left, and already expired. */
+function expiryBuckets(dates: (string | null | undefined)[]) {
+  const buckets = { d30: 0, d20: 0, d10: 0, expired: 0 };
+  for (const d of dates) {
+    const n = daysUntil(d);
+    if (n === null) continue;
+    if (n < 0) buckets.expired += 1;
+    else if (n <= 10) buckets.d10 += 1;
+    else if (n <= 20) buckets.d20 += 1;
+    else if (n <= 30) buckets.d30 += 1;
+  }
+  return buckets;
+}
+
+function ExpiryCard({
+  title,
+  icon,
+  buckets,
+  to,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  buckets: { d30: number; d20: number; d10: number; expired: number };
+  to?: string;
+}) {
+  const items = [
+    { label: '30 Days', value: buckets.d30, tone: 'blue' },
+    { label: '20 Days', value: buckets.d20, tone: 'green' },
+    { label: '10 Days', value: buckets.d10, tone: 'amber' },
+    { label: 'Expired', value: buckets.expired, tone: 'red' },
+  ];
+  const body = (
+    <>
+      <div className="row-between" style={{ marginBottom: 14 }}>
+        <div className="kpi-label" style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>{title}</div>
+        <div className={`kpi-icon tone-indigo`} style={{ width: 34, height: 34 }}>{icon}</div>
+      </div>
+      <div className="expiry-buckets">
+        {items.map((it, i) => (
+          <div key={it.label} className="expiry-bucket">
+            <div className={`expiry-dot tone-${it.tone}`}>{it.value}</div>
+            <div className="xs muted">{it.label}</div>
+            {i < items.length - 1 && <span className="expiry-line" aria-hidden />}
+          </div>
+        ))}
+      </div>
+    </>
+  );
+  if (to) return <Link to={to} className="card expiry-card">{body}</Link>;
+  return <div className="card expiry-card">{body}</div>;
 }
 
 // The API's dashboard aggregates every branch, so with a branch selected the figures are rebuilt from that branch's assets.
@@ -116,6 +179,8 @@ export default function DashboardPage() {
   };
   const warrantyExpiring = Math.max(k.warrantyExpiring || 0, assets.filter((a) => within30(a.warrantyEndDate)).length);
   const amcExpiring = Math.max(k.amcExpiring || 0, assets.filter((a) => within30(a.amcEndDate)).length);
+  const insuranceBuckets = expiryBuckets(assets.map((a) => a.insuranceEndDate));
+  const warrantyBuckets = expiryBuckets(assets.map((a) => a.warrantyEndDate));
   const openAudits = audits.filter((a) => !isCompleted(a.status));
   // The API's summary.assetsUnderRepair stays 0 even when assets are In Repair, so count from the status breakdown.
   const underRepair = Math.max(
@@ -124,13 +189,18 @@ export default function DashboardPage() {
   );
   const hour = new Date().getHours();
 
-  const value = new Map((dash.assetValueByCategory || []).map((c) => [c.label, c.value]));
-  const byCategory = (dash.assetsByCategory || []).map((c) => ({ name: c.label, count: c.value, value: value.get(c.label) || 0 }));
+  const categoryTotal = (dash.assetsByCategory || []).reduce((s, c) => s + c.value, 0);
+  const categoryPie = (dash.assetsByCategory || []).map((c) => ({
+    name: c.label,
+    value: c.value,
+    pct: categoryTotal ? (c.value / categoryTotal) * 100 : 0,
+  }));
 
   const expiring = assets
     .flatMap((a) => [
       { a, kind: 'Warranty', d: a.warrantyEndDate },
       { a, kind: 'AMC', d: a.amcEndDate },
+      { a, kind: 'Insurance', d: a.insuranceEndDate },
     ])
     .map((x) => ({ ...x, days: daysUntil(x.d) }))
     .filter((x) => x.days !== null && x.days >= 0 && x.days <= 60)
@@ -160,8 +230,14 @@ export default function DashboardPage() {
           Showing figures for branch <b>{activeBranch.name}</b> only. Depreciation by month is available for all branches.
         </div>
       )}
-      <div className="grid grid-kpi">
-        <Kpi label="Total Assets" value={num(k.totalAssets)} icon={<Boxes size={20} />} to="/assets" />
+      <div className="grid grid-4">
+        <ExpiryCard title="Insurance Expiry" icon={<Shield size={16} />} buckets={insuranceBuckets} to="/contracts?tab=warranty" />
+        <Kpi label="Total Assets" value={num(k.totalAssets)} hint="Asset count" icon={<Boxes size={20} />} toneName="green" to="/assets" />
+        <ExpiryCard title="Warranty Expiry" icon={<ShieldAlert size={16} />} buckets={warrantyBuckets} to="/contracts?tab=warranty" />
+        <Kpi label="Disposal Count" value={num(pendingDisposals.length)} hint={`${num(allDisposals.length)} total requests`} icon={<Trash2 size={20} />} toneName="amber" to="/disposal" />
+      </div>
+
+      <div className="grid grid-kpi mt">
         <Kpi label="Asset Value" value={money(k.assetValue, { compact: true })} hint="Purchase cost" icon={<DollarSign size={20} />} toneName="purple" to="/depreciation" />
         <Kpi label="Active Assets" value={num(k.activeAssets)} hint={`${k.totalAssets ? Math.round((k.activeAssets / k.totalAssets) * 100) : 0}% utilisation`} icon={<CheckCircle2 size={20} />} toneName="green" to="/assets?status=Active" />
         <Kpi label="Under Repair" value={num(underRepair)} icon={<Wrench size={20} />} toneName="amber" to="/assets?status=In Repair,Under Maintenance" />
@@ -171,29 +247,83 @@ export default function DashboardPage() {
         <Kpi label="Open Disposals" value={num(pendingDisposals.length)} hint={`${num(openAudits.length)} audits open`} icon={<FileWarning size={20} />} toneName="slate" to="/disposal" />
       </div>
 
-      <div className="grid grid-3 mt">
-        <Card title="Assets by Category" subtitle="Count and value" className="span-2">
-          {byCategory.length ? (
+      <div className="grid grid-2 mt">
+        <Card title="Site Wise Asset Count" subtitle="Assets by location">
+          {dash.assetsByLocation?.length ? (
             <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={byCategory} margin={{ left: -10, right: 10 }}>
+              <BarChart data={dash.assetsByLocation} margin={{ left: -10, right: 8, top: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eef1f6" />
-                <XAxis dataKey="name" tickLine={false} axisLine={false} />
-                <YAxis yAxisId="l" tickLine={false} axisLine={false} allowDecimals={false} />
-                <YAxis yAxisId="r" orientation="right" tickLine={false} axisLine={false} tickFormatter={(v) => money(v, { compact: true }).replace(/^\w+ /, '')} />
-                <Tooltip formatter={(v: number, n: string) => (n === 'Value' ? money(v) : num(v))} />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-                <Bar yAxisId="l" dataKey="count" name="Assets" radius={[6, 6, 0, 0]} maxBarSize={38}>
-                  {byCategory.map((c, i) => (
-                    <Cell key={c.name} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                  ))}
-                </Bar>
-                <Bar yAxisId="r" dataKey="value" name="Value" fill="#c7d2fe" radius={[6, 6, 0, 0]} maxBarSize={38} />
+                <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={11} />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  allowDecimals={false}
+                  fontSize={11}
+                  domain={[0, (max: number) => Math.max(4, Math.ceil(max))]}
+                  tickFormatter={(v) => String(Math.round(v))}
+                />
+                <Tooltip formatter={(v: number) => num(v)} />
+                <Bar dataKey="value" name="Assets" fill="#6366f1" radius={[6, 6, 0, 0]} maxBarSize={42} label={{ position: 'top', fontSize: 11, fill: '#64748b' }} />
               </BarChart>
             </ResponsiveContainer>
+          ) : (
+            <Empty title="No locations yet" />
+          )}
+        </Card>
+        <Card title="Category Wise Asset Count" subtitle="Share of total assets">
+          {categoryPie.length ? (
+            <div className="row" style={{ alignItems: 'center', gap: 8 }}>
+              <ResponsiveContainer width="55%" height={280}>
+                <PieChart>
+                  <Pie
+                    data={categoryPie}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={58}
+                    outerRadius={92}
+                    paddingAngle={2}
+                    stroke="none"
+                    label={({ value }) => {
+                      const pct = categoryTotal ? (Number(value) / categoryTotal) * 100 : 0;
+                      return `${value} : ${pct.toFixed(2)}%`;
+                    }}
+                    labelLine={{ stroke: '#94a3b8', strokeWidth: 1 }}
+                  >
+                    {categoryPie.map((c, i) => (
+                      <Cell key={c.name} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(v: number, _n, item) => {
+                      const pct = (item?.payload as { pct?: number })?.pct ?? 0;
+                      return [`${num(v)} (${pct.toFixed(2)}%)`, 'Assets'];
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="stack" style={{ flex: 1, gap: 7, maxHeight: 280, overflow: 'auto', paddingRight: 4 }}>
+                {categoryPie.map((c, i) => (
+                  <div key={c.name} className="row-between small" style={{ gap: 10 }}>
+                    <span className="row" style={{ gap: 8, minWidth: 0 }}>
+                      <i style={{ width: 9, height: 9, borderRadius: 3, background: CHART_COLORS[i % CHART_COLORS.length], flexShrink: 0 }} />
+                      <span className="ellipsis">{c.name}</span>
+                    </span>
+                    <b style={{ whiteSpace: 'nowrap' }}>
+                      {num(c.value)} · {c.pct.toFixed(1)}%
+                    </b>
+                  </div>
+                ))}
+              </div>
+            </div>
           ) : (
             <Empty title="No assets yet" />
           )}
         </Card>
+      </div>
+
+      <div className="grid grid-3 mt">
         <Card title="Asset Status" subtitle="Operational distribution">
           {dash.assetDistribution?.length ? (
             <>
@@ -220,24 +350,6 @@ export default function DashboardPage() {
             <Empty title="No assets yet" />
           )}
         </Card>
-      </div>
-
-      <div className="grid grid-3 mt">
-        <Card title="Assets by Location">
-          {dash.assetsByLocation?.length ? (
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={dash.assetsByLocation} layout="vertical" margin={{ left: 10, right: 16 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#eef1f6" />
-                <XAxis type="number" tickLine={false} axisLine={false} allowDecimals={false} />
-                <YAxis type="category" dataKey="label" width={110} tickLine={false} axisLine={false} />
-                <Tooltip />
-                <Bar dataKey="value" name="Assets" fill="#6366f1" radius={[0, 6, 6, 0]} maxBarSize={22} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <Empty title="No locations yet" />
-          )}
-        </Card>
         <Card title="Warranty Expiry" subtitle="Assets per month">
           <MonthlyBars data={warrantyChart} color="#f59e0b" name="Assets" />
         </Card>
@@ -250,12 +362,12 @@ export default function DashboardPage() {
         <Card title="Depreciation" subtitle="Posted per month">
           <MonthlyBars data={dash.depreciationByMonth} color="#8b5cf6" name="Depreciation" currency />
         </Card>
-        <Card title="Expiring Soon" subtitle="Warranty & AMC in 60 days" bodyClass="tight">
+        <Card title="Expiring Soon" subtitle="Warranty, AMC & insurance in 60 days" bodyClass="tight">
           {expiring.length ? (
             expiring.map((x) => (
               <Link to={`/assets/${x.a.assetId}`} key={x.kind + x.a.assetId} className="list-item" style={{ color: 'inherit', textDecoration: 'none' }}>
-                <div className={`kpi-icon ${x.kind === 'AMC' ? 'tone-cyan' : 'tone-amber'}`} style={{ width: 34, height: 34 }}>
-                  {x.kind === 'AMC' ? <CalendarClock size={16} /> : <ShieldAlert size={16} />}
+                <div className={`kpi-icon ${x.kind === 'AMC' ? 'tone-cyan' : x.kind === 'Insurance' ? 'tone-blue' : 'tone-amber'}`} style={{ width: 34, height: 34 }}>
+                  {x.kind === 'AMC' ? <CalendarClock size={16} /> : x.kind === 'Insurance' ? <Shield size={16} /> : <ShieldAlert size={16} />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="cell-main ellipsis">{x.a.assetName}</div>
@@ -267,7 +379,7 @@ export default function DashboardPage() {
               </Link>
             ))
           ) : (
-            <Empty title="Nothing expiring" message="No warranties or AMCs expire in the next 60 days." />
+            <Empty title="Nothing expiring" message="No warranties, AMCs or insurance policies expire in the next 60 days." />
           )}
         </Card>
         <Card title="Recently Registered" bodyClass="tight" actions={<Link to="/assets" className="small">View all</Link>}>

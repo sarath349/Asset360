@@ -125,19 +125,54 @@ export function Modal({ open, title, onClose, children, footer, size }: { open: 
   );
 }
 
-export function Confirm({ open, title, message, confirmText = 'Confirm', danger, onConfirm, onClose, busy }: { open: boolean; title: string; message: ReactNode; confirmText?: string; danger?: boolean; onConfirm: () => void; onClose: () => void; busy?: boolean }) {
+export function Confirm({
+  open,
+  title,
+  message,
+  confirmText = 'Confirm',
+  danger,
+  onConfirm,
+  onClose,
+  busy: busyProp,
+}: {
+  open: boolean;
+  title: string;
+  message: ReactNode;
+  confirmText?: string;
+  danger?: boolean;
+  onConfirm: () => void | Promise<void>;
+  onClose: () => void;
+  busy?: boolean;
+}) {
+  const [pending, setPending] = useState(false);
+  const busy = busyProp || pending;
+
+  useEffect(() => {
+    if (!open) setPending(false);
+  }, [open]);
+
+  const run = async () => {
+    if (busy) return;
+    setPending(true);
+    try {
+      await onConfirm();
+    } finally {
+      setPending(false);
+    }
+  };
+
   return (
     <Modal
       open={open}
       title={title}
-      onClose={onClose}
+      onClose={busy ? () => undefined : onClose}
       footer={
         <>
-          <button className="btn" onClick={onClose}>
+          <button className="btn" onClick={onClose} disabled={busy}>
             Cancel
           </button>
-          <button className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} onClick={onConfirm} disabled={busy}>
-            {confirmText}
+          <button className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} onClick={run} disabled={busy}>
+            {busy ? 'Working…' : confirmText}
           </button>
         </>
       }

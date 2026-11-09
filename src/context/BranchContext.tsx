@@ -37,7 +37,7 @@ export function BranchProvider({ children }: { children: ReactNode }) {
   const [chosen, setChosen] = useState<string | null>(() => localStorage.getItem(KEY) || null);
 
   const branches = useMemo(() => {
-    const all = locations.filter((l) => isBranchType(l.type) && l.active !== false);
+    const all = locations.filter((l) => l.kind !== 'sublocation' && isBranchType(l.type) && l.active !== false);
     return all.sort((a, b) => a.name.localeCompare(b.name));
   }, [locations]);
 

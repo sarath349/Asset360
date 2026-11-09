@@ -27,6 +27,24 @@ export function useFetch<T>(fn: () => Promise<T>, deps: DependencyList = []) {
   return { data, setData, loading, error, reload };
 }
 
+/**
+ * Keep asset lists in sync with cache events:
+ * - assets-changed → refetch from the server (after a real delete/update)
+ * - device-cleared → show empty offline copy; do NOT pull the server register back in
+ */
+export function useReloadOnAssetChange(reload: () => void, onCleared?: () => void) {
+  useEffect(() => {
+    const onChanged = () => reload();
+    const onDeviceCleared = () => (onCleared ? onCleared() : reload());
+    window.addEventListener('assetpro.assets-changed', onChanged);
+    window.addEventListener('assetpro.device-cleared', onDeviceCleared);
+    return () => {
+      window.removeEventListener('assetpro.assets-changed', onChanged);
+      window.removeEventListener('assetpro.device-cleared', onDeviceCleared);
+    };
+  }, [reload, onCleared]);
+}
+
 export function useDebounced<T>(value: T, ms = 300) {
   const [v, setV] = useState(value);
   useEffect(() => {

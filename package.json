@@ -1,12 +1,25 @@
 {
-  "name": "assetpro-portal",
+  "name": "asset360",
   "version": "1.0.0",
   "private": true,
+  "description": "Asset360 desktop and web portal",
+  "author": "Asset360",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
+    "dev:all": "node scripts/dev-all.mjs",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "api:install": "yarn --cwd server install",
+    "api:dev": "yarn --cwd server dev",
+    "api:start": "yarn --cwd server start",
+    "api:seed": "yarn --cwd server seed",
+    "electron:dev": "yarn build && electron .",
+    "electron:build": "yarn build && electron-builder --publish never",
+    "electron:build:mac": "yarn build && electron-builder --mac --publish never",
+    "electron:build:win": "yarn build && electron-builder --win --publish never",
+    "electron:build:all": "yarn build && electron-builder --mac --win --publish never"
   },
   "dependencies": {
     "html5-qrcode": "^2.3.8",
@@ -23,7 +36,63 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
     "typescript": "^5.5.4",
     "vite": "^5.4.0"
+  },
+  "build": {
+    "appId": "com.asset360.app",
+    "productName": "Asset360",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "server",
+        "to": "server",
+        "filter": [
+          "src/**/*",
+          "package.json",
+          "node_modules/**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.business",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "hardenedRuntime": true
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "include": "build/installer.nsh"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Office"
+    }
   }
 }

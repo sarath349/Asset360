@@ -3,6 +3,8 @@ import https from 'node:https';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// Cloud AssetAPI (swagger) by default. Override with VITE_API_TARGET=http://127.0.0.1:5050
+// to use the local server/ API (which additionally implements receipts and approval levels).
 const API = process.env.VITE_API_TARGET || 'https://assetapi.secureworldme.com';
 
 // Falls back to public / authoritative DNS when the system resolver cannot find the API host

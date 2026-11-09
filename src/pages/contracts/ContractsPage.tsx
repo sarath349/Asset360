@@ -29,7 +29,7 @@ export default function ContractsPage() {
     <>
       <PageHeader
         title="AMC & Warranty"
-        subtitle="Service contracts, SLAs and visit entitlements, plus warranty and AMC coverage for every asset."
+        subtitle="Service contracts, SLAs and visit entitlements, plus warranty, AMC and insurance coverage for every asset."
         actions={can('contracts', 'create') && <button className="btn btn-primary" onClick={() => setOpen(true)}><Plus size={16} /> New contract</button>}
       />
       <div className="card">
@@ -38,7 +38,7 @@ export default function ContractsPage() {
           onChange={(t) => setParams(t === 'amc' ? {} : { tab: t })}
           tabs={[
             { key: 'amc', label: 'AMC / service contracts', icon: <FileSignature size={15} /> },
-            { key: 'warranty', label: 'Warranty & AMC tracker', icon: <ShieldCheck size={15} /> },
+            { key: 'warranty', label: 'Warranty · AMC · Insurance', icon: <ShieldCheck size={15} /> },
             { key: 'alerts', label: 'Expiry alerts', icon: <Bell size={15} /> },
           ]}
         />
@@ -126,24 +126,25 @@ function Warranties() {
   const { categories } = useData();
   const names = useNames();
   const [days, setDays] = useState('0');
-  const [kind, setKind] = useState<'warranty' | 'amc'>('warranty');
+  const [kind, setKind] = useState<'warranty' | 'amc' | 'insurance'>('warranty');
   const [q, setQ] = useState('');
   const { data, loading } = useFetch(() => assetApi.list().catch(() => [] as ApiAsset[]), []);
   const catName = useMemo(() => new Map(categories.map((c) => [c._id, c.name])), [categories]);
   const list = useMemo(() => {
-    const end = (a: ApiAsset) => (kind === 'warranty' ? a.warrantyEndDate : a.amcEndDate);
-    const start = (a: ApiAsset) => (kind === 'warranty' ? a.warrantyStartDate : a.amcStartDate);
+    const end = (a: ApiAsset) => (kind === 'warranty' ? a.warrantyEndDate : kind === 'amc' ? a.amcEndDate : a.insuranceEndDate);
+    const start = (a: ApiAsset) => (kind === 'warranty' ? a.warrantyStartDate : kind === 'amc' ? a.amcStartDate : a.insuranceStartDate);
     return (data || [])
       .filter((a) => end(a))
       .map((a) => ({ ...a, _id: String(a.assetId), start: start(a), end: end(a), daysToExpiry: daysUntil(end(a)) ?? 0 }))
       .filter((a) => !Number(days) || (a.daysToExpiry >= 0 && a.daysToExpiry <= Number(days)))
-      .filter((a) => !q || [a.assetCode, a.assetName, a.brand, a.model].some((x) => x?.toLowerCase().includes(q.toLowerCase())));
+      .filter((a) => !q || [a.assetCode, a.assetName, a.brand, a.model, a.insurancePolicyNumber].some((x) => x?.toLowerCase().includes(q.toLowerCase())));
   }, [data, days, kind, q]);
+  const kindLabel = kind === 'amc' ? 'AMC' : kind === 'insurance' ? 'insurance' : 'warranty';
   return (
     <>
       <div className="toolbar">
         <SearchInput value={q} onChange={setQ} placeholder="Search assets…" />
-        <Segmented value={kind} onChange={(v) => setKind(v as 'warranty' | 'amc')} options={[{ value: 'warranty', label: 'Warranty' }, { value: 'amc', label: 'AMC' }]} />
+        <Segmented value={kind} onChange={(v) => setKind(v as 'warranty' | 'amc' | 'insurance')} options={[{ value: 'warranty', label: 'Warranty' }, { value: 'amc', label: 'AMC' }, { value: 'insurance', label: 'Insurance' }]} />
         <Segmented value={days} onChange={setDays} options={[{ value: '0', label: 'All' }, { value: '15', label: '15 days' }, { value: '30', label: '30 days' }, { value: '90', label: '90 days' }]} />
       </div>
       {loading && !data ? (
@@ -154,12 +155,13 @@ function Warranties() {
           pageSize={20}
           onRowClick={(a) => navigate(`/assets/${a.assetId}`)}
           initialSort={{ key: 'daysToExpiry', dir: 'asc' }}
-          empty={<Empty title={`No ${kind === 'amc' ? 'AMC' : 'warranty'} dates in this window`} />}
+          empty={<Empty title={`No ${kindLabel} dates in this window`} />}
           columns={[
             { key: 'assetName', label: 'Asset', render: (a) => <div><div className="cell-main">{a.assetName}</div><div className="cell-sub mono">{a.assetCode}</div></div> },
             { key: 'category', label: 'Category', render: (a) => (a.categoryId ? catName.get(`c${a.categoryId}`) : '—') },
             { key: 'make', label: 'Make / model', render: (a) => [a.brand, a.model].filter(Boolean).join(' ') || '—' },
             { key: 'location', label: 'Location', render: (a) => names.location(a.locationId) || '—' },
+            ...(kind === 'insurance' ? [{ key: 'policy', label: 'Policy no.', render: (a: ApiAsset & { start: string | null; end: string | null; daysToExpiry: number }) => a.insurancePolicyNumber ? <span className="mono">{a.insurancePolicyNumber}</span> : '—' }] : []),
             { key: 'start', label: 'Start', render: (a) => date(a.start) },
             { key: 'end', label: 'End', render: (a) => date(a.end) },
             { key: 'daysToExpiry', label: 'Status', render: (a) => expiryBadge(a.daysToExpiry) },

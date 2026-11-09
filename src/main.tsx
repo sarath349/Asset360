@@ -8,7 +8,8 @@ import { DataProvider } from './context/DataContext';
 import { ToastProvider } from './context/ToastContext';
 import './styles.css';
 
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
+const isDesktop = Boolean(window.asset360Desktop?.isDesktop);
+if ('serviceWorker' in navigator && import.meta.env.PROD && !isDesktop) {
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => undefined));
 }
 

@@ -98,12 +98,15 @@ export default function UsersPage() {
       const body: Partial<ApiUser> = {
         ...existing,
         departmentId,
+        locationId: branch?.locationId ?? existing?.locationId ?? null,
+        organizationId: existing?.organizationId ?? 1,
         username: d.username.trim(),
         fullName: d.fullName.trim() || null,
         email: d.email.trim() || null,
         phone: d.phone.trim() || null,
         role: d.role || null,
         isActive: d.isActive,
+        isMobileAppUser: tab === 'mobile' || isMobileRole(d.role),
         passwordHash: d.password || existing?.passwordHash || null,
         createdDate: existing?.createdDate || new Date().toISOString(),
       };
@@ -232,10 +235,12 @@ export default function UsersPage() {
           try {
             await userApi.remove(remove.userId);
             setRemove(null);
-            reload();
-            reloadLookups(['users']);
+            await reload();
+            await reloadLookups(['users']);
+            toast.success('User deleted');
           } catch (err) {
             toast.error(err);
+            throw err;
           }
         }}
       />
