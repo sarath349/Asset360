@@ -50,6 +50,39 @@ router.get('/', async (_req, res) => {
   res.json(rows.map(publicDoc));
 });
 
+router.get('/upcoming', async (req, res) => {
+  const days = Number(req.query.days) || 30;
+  const now = Date.now();
+  const until = now + days * 86400000;
+  const rows = await getDb().collection('maintenanceJobs').find({ status: { $in: ['Open', 'In Progress'] } }).toArray();
+  const upcoming = rows.filter((j) => {
+    if (!j.dueDate) return false;
+    const t = new Date(j.dueDate).getTime();
+    return Number.isFinite(t) && t >= now && t <= until;
+  });
+  res.json(upcoming.map(publicDoc));
+});
+
+router.get('/overdue', async (_req, res) => {
+  const now = Date.now();
+  const rows = await getDb().collection('maintenanceJobs').find({ status: { $in: ['Open', 'In Progress'] } }).toArray();
+  const overdue = rows.filter((j) => {
+    if (!j.dueDate) return false;
+    const t = new Date(j.dueDate).getTime();
+    return Number.isFinite(t) && t < now;
+  });
+  res.json(overdue.map(publicDoc));
+});
+
+router.get('/asset/:assetId', async (req, res) => {
+  const rows = await getDb()
+    .collection('maintenanceJobs')
+    .find({ assetId: Number(req.params.assetId) })
+    .sort({ jobId: -1 })
+    .toArray();
+  res.json(rows.map(publicDoc));
+});
+
 router.get('/:id', async (req, res) => {
   const row = await getDb().collection('maintenanceJobs').findOne({ jobId: Number(req.params.id) });
   if (!row) return res.status(404).json({ message: 'Not found' });

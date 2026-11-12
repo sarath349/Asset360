@@ -212,6 +212,8 @@ export interface ApiAuditCampaign {
   auditName: string;
   siteId: number;
   areaId: number | null;
+  categoryId: number | null;
+  subCategoryId: number | null;
   startDate: string;
   endDate: string | null;
   assignedTo: number | null;
@@ -489,11 +491,22 @@ export const depreciationApi = {
   report: (assetId: Id) => get<any>(`/assetdepreciation/report/${assetId}`),
 };
 
+export interface ApiDisposalApprovalHistory {
+  historyId: number;
+  disposalId: number;
+  action: string;
+  status: string;
+  actedBy: number | null;
+  remarks: string | null;
+  actedDate: string;
+}
+
 export const disposalApi = {
   list: () => get<ApiDisposal[]>('/assetdisposals'),
   pending: () => get<ApiDisposal[]>('/assetdisposals/pending'),
   get: (id: Id) => get<ApiDisposal>(`/assetdisposals/${id}`),
   byAsset: (assetId: Id) => get<ApiDisposal[]>(`/assetdisposals/asset/${assetId}`),
+  approvalHistory: (id: Id) => get<ApiDisposalApprovalHistory[]>(`/assetdisposals/${id}/approval-history`),
   create: (d: Partial<ApiDisposal>) =>
     post<ApiDisposal>('/assetdisposals', {
       disposalId: 0,
@@ -576,14 +589,17 @@ export interface ApiMaintenanceJob {
 }
 
 export const maintenanceApi = {
-  list: () => get<ApiMaintenanceJob[]>('/maintenance'),
-  get: (id: Id) => get<ApiMaintenanceJob>(`/maintenance/${id}`),
-  create: (j: Partial<ApiMaintenanceJob>) => post<ApiMaintenanceJob>('/maintenance', { jobId: 0, createdDate: nowIso(), spareParts: [], beforePhotos: [], afterPhotos: [], photos: [], ...j }),
-  update: (id: Id, j: Partial<ApiMaintenanceJob>) => put<ApiMaintenanceJob>(`/maintenance/${id}`, { ...j, jobId: Number(id), updatedDate: nowIso() }),
-  start: (id: Id, body: { markAsset?: boolean } = {}) => post<ApiMaintenanceJob>(`/maintenance/start/${id}`, body),
-  complete: (id: Id, body: Partial<ApiMaintenanceJob> & { markAsset?: boolean } = {}) => post<ApiMaintenanceJob>(`/maintenance/complete/${id}`, body),
-  cancel: (id: Id, body: Partial<ApiMaintenanceJob> = {}) => post<ApiMaintenanceJob>(`/maintenance/cancel/${id}`, body),
-  remove: (id: Id) => del<string>(`/maintenance/${id}`),
+  list: () => get<ApiMaintenanceJob[]>('/assetmaintenance'),
+  get: (id: Id) => get<ApiMaintenanceJob>(`/assetmaintenance/${id}`),
+  byAsset: (assetId: Id) => get<ApiMaintenanceJob[]>(`/assetmaintenance/asset/${assetId}`),
+  upcoming: (days = 30) => get<ApiMaintenanceJob[]>('/assetmaintenance/upcoming', { days }),
+  overdue: () => get<ApiMaintenanceJob[]>('/assetmaintenance/overdue'),
+  create: (j: Partial<ApiMaintenanceJob>) => post<ApiMaintenanceJob>('/assetmaintenance', { jobId: 0, createdDate: nowIso(), spareParts: [], beforePhotos: [], afterPhotos: [], photos: [], ...j }),
+  update: (id: Id, j: Partial<ApiMaintenanceJob>) => put<ApiMaintenanceJob>(`/assetmaintenance/${id}`, { ...j, jobId: Number(id), updatedDate: nowIso() }),
+  start: (id: Id, body: { markAsset?: boolean } = {}) => post<ApiMaintenanceJob>(`/assetmaintenance/start/${id}`, body),
+  complete: (id: Id, body: Partial<ApiMaintenanceJob> & { markAsset?: boolean } = {}) => post<ApiMaintenanceJob>(`/assetmaintenance/complete/${id}`, body),
+  cancel: (id: Id, body: Partial<ApiMaintenanceJob> = {}) => post<ApiMaintenanceJob>(`/assetmaintenance/cancel/${id}`, body),
+  remove: (id: Id) => del<string>(`/assetmaintenance/${id}`),
 };
 
 export interface ApiReceiptLine {
@@ -674,11 +690,166 @@ export interface ApiLabelTemplate {
 }
 
 export const labelTemplateApi = {
-  list: () => get<ApiLabelTemplate[]>('/labeltemplates'),
+  list: () => get<ApiLabelTemplate[]>('/assetlabels/templates'),
   get: (id: Id) => get<ApiLabelTemplate>(`/labeltemplates/${id}`),
-  create: (t: Partial<ApiLabelTemplate>) => post<ApiLabelTemplate>('/labeltemplates', { templateId: 0, createdDate: nowIso(), ...t }),
-  update: (id: Id, t: Partial<ApiLabelTemplate>) => put<ApiLabelTemplate>(`/labeltemplates/${id}`, { ...t, templateId: Number(id), updatedDate: nowIso() }),
+  create: (t: Partial<ApiLabelTemplate>) => post<ApiLabelTemplate>('/assetlabels/templates', { templateId: 0, createdDate: nowIso(), ...t }),
+  update: (id: Id, t: Partial<ApiLabelTemplate>) => put<ApiLabelTemplate>(`/assetlabels/templates/${id}`, { ...t, templateId: Number(id), updatedDate: nowIso() }),
   remove: (id: Id) => del<string>(`/labeltemplates/${id}`),
+  printBatch: (body: { templateId?: number | null; assetIds: number[]; format?: 'zpl' | 'csv'; createdBy?: number | null }) =>
+    post<ApiLabelPrintJob>('/assetlabels/print-batch', body),
+  downloadJob: (id: Id) => get<Blob | string>(`/assetlabels/jobs/${id}/download`),
+  markPrinted: (id: Id, body: { printedBy?: number | null } = {}) => put<ApiLabelPrintJob>(`/assetlabels/jobs/${id}/printed`, body),
+};
+
+export interface ApiLabelPrintJob {
+  jobId: number;
+  templateId: number | null;
+  assetIds: number[];
+  format: 'zpl' | 'csv' | string;
+  status: string;
+  payload?: string;
+  createdBy: number | null;
+  createdDate: string;
+  printedDate: string | null;
+  updatedDate: string | null;
+}
+
+export interface ApiLoanItem {
+  loanItemId: number;
+  assetId: number | null;
+  assetCode: string | null;
+  assetName: string | null;
+  status: string;
+  issuedDate: string | null;
+  returnedDate: string | null;
+  conditionOut: string | null;
+  conditionIn: string | null;
+  remarks: string | null;
+}
+
+export interface ApiAssetLoan {
+  loanId: number;
+  loanNumber: string | null;
+  borrowerEmployeeId: number | null;
+  borrowerName: string | null;
+  departmentId: number | null;
+  purpose: string | null;
+  requestedFrom: string | null;
+  requestedTo: string | null;
+  status: string;
+  requestedBy: number | null;
+  decidedBy: number | null;
+  decisionDate: string | null;
+  decisionRemarks: string | null;
+  issuedBy: number | null;
+  issuedDate: string | null;
+  items: ApiLoanItem[];
+  remarks: string | null;
+  createdDate: string;
+  updatedDate: string | null;
+}
+
+/** Body of POST /assetloans — matches Swagger CreateAssetLoanRequest exactly. */
+export interface CreateLoanRequest {
+  assetIds: number[];
+  borrowerType: string | null;
+  borrowerEmployeeId: number | null;
+  borrowerName: string | null;
+  borrowerEmail: string | null;
+  borrowerPhone: string | null;
+  loanPurpose: string | null;
+  expectedReturnDate: string;
+  remarks: string | null;
+}
+
+export const loanApi = {
+  list: () => get<ApiAssetLoan[]>('/assetloans'),
+  my: (q?: { userId?: number; employeeId?: number }) => get<ApiAssetLoan[]>('/assetloans/my', q),
+  get: (id: Id) => get<ApiAssetLoan>(`/assetloans/${id}`),
+  create: (body: CreateLoanRequest) => post<ApiAssetLoan>('/assetloans', body),
+  decide: (id: Id, body: { decision: 'Approve' | 'Reject'; decidedBy?: number | null; decisionRemarks?: string | null }) =>
+    put<ApiAssetLoan>(`/assetloans/${id}/decision`, body),
+  issue: (id: Id, body: { issuedBy?: number | null } = {}) => put<ApiAssetLoan>(`/assetloans/${id}/issue`, body),
+  returnItem: (itemId: Id, body: { conditionIn?: string | null; remarks?: string | null } = {}) =>
+    put<ApiAssetLoan>(`/assetloans/items/${itemId}/return`, body),
+};
+
+/** Matches Swagger AssetInsurancePolicy */
+export interface ApiInsurancePolicy {
+  policyId: number;
+  policyNumber: string | null;
+  insuranceCompany: string | null;
+  insuranceType: string | null;
+  contactPerson: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  coverageDetails: string | null;
+  exclusions: string | null;
+  insuredValue: number | null;
+  premiumAmount: number | null;
+  deductibleAmount: number | null;
+  policyDocumentPath: string | null;
+  status: string | null;
+  createdBy: number | null;
+  createdDate: string;
+  updatedDate: string | null;
+  assets?: ApiAsset[];
+}
+
+/** Matches Swagger AssetInsuranceClaim */
+export interface ApiInsuranceClaim {
+  claimId: number;
+  claimNumber: string | null;
+  policyId: number | null;
+  assetId: number | null;
+  incidentId: number | null;
+  incidentDate: string | null;
+  claimDate: string | null;
+  claimDescription: string | null;
+  claimAmount: number | null;
+  approvedAmount: number | null;
+  insurerReference: string | null;
+  claimDocumentPath: string | null;
+  status: string | null;
+  decisionRemarks: string | null;
+  createdBy: number | null;
+  createdDate: string;
+  settledDate: string | null;
+}
+
+/** Matches Swagger AssetInsuranceMapping */
+export interface ApiInsuranceMapping {
+  mappingId: number;
+  policyId: number;
+  assetId: number;
+  assetInsuredValue: number | null;
+  createdDate: string;
+}
+
+/** Matches Swagger InsuranceClaimDecisionRequest */
+export interface ApiInsuranceClaimDecision {
+  status?: string | null;
+  approvedAmount?: number | null;
+  remarks?: string | null;
+}
+
+export const insuranceApi = {
+  policies: () => get<ApiInsurancePolicy[]>('/assetinsurance/policies'),
+  getPolicy: (id: Id) => get<ApiInsurancePolicy>(`/assetinsurance/policies/${id}`),
+  createPolicy: (p: Partial<ApiInsurancePolicy>) =>
+    post<ApiInsurancePolicy>('/assetinsurance/policies', { policyId: 0, createdDate: nowIso(), status: 'Active', ...p }),
+  updatePolicy: (id: Id, p: Partial<ApiInsurancePolicy>) =>
+    put<ApiInsurancePolicy>(`/assetinsurance/policies/${id}`, { ...p, policyId: Number(id), updatedDate: nowIso() }),
+  mapAsset: (body: { policyId: number; assetId: number; assetInsuredValue?: number | null }) =>
+    post<ApiInsuranceMapping>('/assetinsurance/map-asset', { mappingId: 0, createdDate: nowIso(), ...body }),
+  byAsset: (assetId: Id) => get<any>(`/assetinsurance/asset/${assetId}`),
+  claims: (status?: string) => get<ApiInsuranceClaim[]>('/assetinsurance/claims', status ? { status } : undefined),
+  createClaim: (c: Partial<ApiInsuranceClaim>) =>
+    post<ApiInsuranceClaim>('/assetinsurance/claims', { claimId: 0, createdDate: nowIso(), claimDate: nowIso(), status: 'Submitted', ...c }),
+  decideClaim: (id: Id, body: ApiInsuranceClaimDecision) => put<ApiInsuranceClaim>(`/assetinsurance/claims/${id}/decision`, body),
+  expiring: (days = 30) => get<ApiInsurancePolicy[]>('/assetinsurance/expiring', { days }),
 };
 
 export const ASSET_STATUSES = ['In Store', 'Active', 'In Repair', 'Under Maintenance', 'Missing', 'Damaged', 'Retired', 'Disposed'];

@@ -2,7 +2,7 @@ import { ReactNode, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeftRight, BarChart3, Boxes, Building2, CalendarClock, ChevronDown, ClipboardCheck, FileSpreadsheet, FolderTree,
-  GitBranch, LayoutDashboard, LogOut, MapPin, Menu, PackagePlus, QrCode, Search, ShieldCheck, Smartphone, TrendingDown, Trash2, Users,
+  GitBranch, Handshake, LayoutDashboard, LogOut, MapPin, Menu, PackagePlus, QrCode, Search, Shield, ShieldCheck, Smartphone, TrendingDown, Trash2, Users, Wrench,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useBranch } from '../context/BranchContext';
@@ -40,6 +40,8 @@ const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { to: '/transfers', label: 'Assign & Transfer', icon: <ArrowLeftRight size={17} />, module: 'transfers' },
       { to: '/audits', label: 'Physical Audit', icon: <ClipboardCheck size={17} />, module: 'audits' },
+      { to: '/maintenance', label: 'Maintenance', icon: <Wrench size={17} />, module: 'maintenance' },
+      { to: '/loans', label: 'Asset Loans', icon: <Handshake size={17} />, module: 'loans' },
       { to: '/receipts', label: 'Receipt', icon: <PackagePlus size={17} />, module: 'procurement' },
     ],
   },
@@ -47,6 +49,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
     group: 'Contracts & Finance',
     items: [
       { to: '/contracts', label: 'AMC & Warranty', icon: <CalendarClock size={17} />, module: 'contracts' },
+      { to: '/insurance', label: 'Insurance', icon: <Shield size={17} />, module: 'insurance' },
       { to: '/disposal', label: 'Disposal & Retirement', icon: <Trash2 size={17} />, module: 'disposal' },
       { to: '/depreciation', label: 'Depreciation', icon: <TrendingDown size={17} />, module: 'depreciation' },
     ],
@@ -56,6 +59,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { to: '/reports', label: 'Reports', icon: <FileSpreadsheet size={17} />, module: 'reports' },
       { to: '/approval-levels', label: 'Approval Levels', icon: <ShieldCheck size={17} />, module: 'roles' },
+      { to: '/roles', label: 'Roles & Permissions', icon: <Users size={17} />, module: 'roles' },
     ],
   },
 ];

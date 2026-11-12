@@ -76,6 +76,31 @@ router.post('/', async (req, res) => {
   res.json(publicDoc(body));
 });
 
+async function pushHistory(disposalId, entry) {
+  const historyId = await nextId('disposalApprovalHistory');
+  const row = {
+    historyId,
+    disposalId,
+    action: entry.action,
+    status: entry.status,
+    actedBy: entry.actedBy ?? null,
+    remarks: entry.remarks || null,
+    actedDate: nowIso(),
+  };
+  await getDb().collection('disposalApprovalHistory').insertOne(row);
+  return row;
+}
+
+router.get('/:id/approval-history', async (req, res) => {
+  const disposalId = Number(req.params.id);
+  const rows = await getDb()
+    .collection('disposalApprovalHistory')
+    .find({ disposalId })
+    .sort({ historyId: 1 })
+    .toArray();
+  res.json(rows.map(publicDoc));
+});
+
 router.post('/approve/:id', async (req, res) => {
   const id = Number(req.params.id);
   const existing = await getDb().collection('disposals').findOne({ disposalId: id });
@@ -90,6 +115,12 @@ router.post('/approve/:id', async (req, res) => {
   };
   delete body._id;
   await getDb().collection('disposals').replaceOne({ disposalId: id }, body);
+  await pushHistory(id, {
+    action: 'Approve',
+    status: 'Approved',
+    actedBy: req.body.approvedBy ?? req.body.actedBy ?? null,
+    remarks: req.body.approvalRemarks || req.body.remarks || null,
+  });
   res.json(publicDoc(body));
 });
 
@@ -107,6 +138,12 @@ router.post('/reject/:id', async (req, res) => {
   };
   delete body._id;
   await getDb().collection('disposals').replaceOne({ disposalId: id }, body);
+  await pushHistory(id, {
+    action: 'Reject',
+    status: 'Rejected',
+    actedBy: req.body.approvedBy ?? req.body.actedBy ?? null,
+    remarks: req.body.approvalRemarks || req.body.remarks || null,
+  });
   res.json(publicDoc(body));
 });
 

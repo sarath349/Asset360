@@ -169,7 +169,7 @@ export default function AssetFormPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const { user } = useAuth();
-  const { categories, employees } = useData();
+  const { categories, employees, locations } = useData();
   const { activeBranchId } = useBranch();
   const [f, setF] = useState<Partial<ApiAsset>>(EMPTY);
   const [tab, setTab] = useState<TabKey>('main');
@@ -209,7 +209,12 @@ export default function AssetFormPage() {
   }, [isEdit]);
 
   useEffect(() => {
-    if (!isEdit && activeBranchId) setF((p) => (p.locationId ? p : { ...p, locationId: Number(activeBranchId) }));
+    if (!isEdit && activeBranchId) {
+      const locId = Number(activeBranchId);
+      if (Number.isFinite(locId) && locId > 0) {
+        setF((p) => (p.locationId ? p : { ...p, locationId: locId }));
+      }
+    }
   }, [isEdit, activeBranchId]);
 
   const categoryOptions = useMemo(() => categories.filter((c) => c.level === 'category').map((c) => ({ value: String(c.id), label: c.name })), [categories]);
@@ -295,7 +300,12 @@ export default function AssetFormPage() {
     const firstBad = TABS.find((t) => errors[t.key].length);
     if (firstBad) {
       setTab(firstBad.key);
-      toast.error(`${firstBad.label}: ${errors[firstBad.key].join(', ')}`);
+      const msg = errors[firstBad.key].join(', ');
+      toast.error(
+        firstBad.key === 'main' && errors.main.includes('Site / location')
+          ? 'Site / location is required — pick the branch/site in the Location & tags section (GPS on the Geo tab is separate).'
+          : `${firstBad.label}: ${msg}`
+      );
       return;
     }
     if (dep.enabled && !existingDep && !(Number(dep.usefulLifeMonths) > 0)) {
@@ -563,20 +573,40 @@ export default function AssetFormPage() {
 
               <div className="stack">
                 <SectionTitle icon={<MapPin size={17} />} title="Location & tags" tone="blue" />
-                <Field label="Site / location" required>
-                  <LocationPicker
-                    value={toKey(f.locationId)}
-                    onChange={(v) => setF({ ...f, locationId: toId(v), subLocationId: null })}
-                    types={['company', 'site', 'building', 'floor', 'area', 'location']}
-                  />
+                <Field label="Site / location" required hint="Branch / site from master data (not GPS). Required even if a room is selected below.">
+                  <div className={mark('main', 'Site / location') || undefined}>
+                    <LocationPicker
+                      value={toKey(f.locationId)}
+                      onChange={(v) => setF({ ...f, locationId: toId(v), subLocationId: null })}
+                      types={['company', 'site', 'building', 'floor', 'area', 'location', 'branch']}
+                    />
+                  </div>
                 </Field>
-                <Field label="Building / floor / room" hint={!f.locationId ? 'Select a site first' : undefined}>
+                <Field label="Building / floor / room" hint={!f.locationId ? 'Select a site first (or pick a room — site will fill automatically)' : undefined}>
                   <LocationPicker
                     value={f.subLocationId ? `s${f.subLocationId}` : null}
-                    onChange={(v) => set('subLocationId', v?.startsWith('s') ? Number(v.slice(1)) || null : toId(v))}
+                    onChange={(v) => {
+                      if (!v) {
+                        set('subLocationId', null);
+                        return;
+                      }
+                      if (v.startsWith('s')) {
+                        const subId = Number(v.slice(1)) || null;
+                        const node = locations.find((l) => l._id === v);
+                        // Sublocation carries its parent site as locationId — fill both so validation passes.
+                        setF((p) => ({
+                          ...p,
+                          subLocationId: subId,
+                          locationId: node?.locationId || p.locationId || null,
+                        }));
+                        return;
+                      }
+                      // User picked a location-level node in this picker — treat it as the site.
+                      setF((p) => ({ ...p, locationId: toId(v), subLocationId: null }));
+                    }}
                     types={['building', 'floor', 'area', 'sublocation', 'room', 'zone', 'rack']}
                     underId={toKey(f.locationId)}
-                    placeholder={f.locationId ? 'Select sublocation…' : 'Select a site first'}
+                    placeholder={f.locationId ? 'Select sublocation…' : 'Select sublocation…'}
                   />
                 </Field>
                 <Field label="QR code value" hint="Defaults to the asset code">

@@ -312,11 +312,22 @@ export default function LocationsPage() {
       </div>
 
       <div className="grid grid-3" style={{ alignItems: 'start' }}>
-        <div className="card">
-          <div className="toolbar">
+        <div className="card loc-panel" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="loc-panel-head">
+            <div>
+              <h3>Available {meta.label}s</h3>
+              <div className="muted">{filtered.length} of {tabRows.length} shown</div>
+            </div>
+            {can('locations', 'create') && (
+              <button className="btn btn-sm" onClick={startNew} title={`Add ${meta.singular}`}>
+                <Plus size={14} />
+              </button>
+            )}
+          </div>
+          <div className="loc-panel-search">
             <SearchInput value={filter} onChange={setFilter} placeholder={`Search ${meta.singular}s…`} />
           </div>
-          <div style={{ maxHeight: 'calc(100vh - 360px)', overflowY: 'auto' }}>
+          <div className="loc-list">
             {filtered.length === 0 ? (
               <Empty
                 title={`No ${meta.singular}s yet`}
@@ -328,31 +339,43 @@ export default function LocationsPage() {
                 )}
               />
             ) : (
-              <div className="stack" style={{ gap: 2 }}>
-                {filtered.map((l) => {
-                  const selected =
-                    tab === 'location' ? locDraft?.locationId === l.locationId && l.kind === 'location' : subDraft?.subLocationId === l.subLocationId;
-                  return (
-                    <button
-                      key={l._id}
-                      type="button"
-                      className={`nav-link ${selected ? 'active' : ''}`}
-                      style={{ width: '100%', textAlign: 'left' }}
-                      onClick={() => openEdit(l)}
-                    >
-                      <div style={{ minWidth: 0 }}>
-                        <div className="cell-main ellipsis">{l.name}</div>
-                        <div className="cell-sub mono">
-                          {l.code || '—'}
-                          {l.kind === 'location' && l.branchCode ? ` · ${l.branchCode}` : ''}
-                          {l.parent ? ` · ${pathOf(l.parent, allLocations)}` : ''}
-                        </div>
+              filtered.map((l) => {
+                const selected =
+                  tab === 'location' ? locDraft?.locationId === l.locationId && l.kind === 'location' : subDraft?.subLocationId === l.subLocationId;
+                const assetCount =
+                  l.kind === 'location'
+                    ? (assets || []).filter((a) => a.locationId === l.locationId).length
+                    : (assets || []).filter((a) => a.subLocationId === l.subLocationId).length;
+                const parentPath = l.parent ? pathOf(l.parent, allLocations) : '';
+                const Icon = l.kind === 'location' ? MapPin : l.type.toLowerCase() === 'room' ? Square : LayoutGrid;
+                return (
+                  <button
+                    key={l._id}
+                    type="button"
+                    className={`loc-row ${selected ? 'selected' : ''} ${l.active === false ? 'loc-row-inactive' : ''}`}
+                    onClick={() => openEdit(l)}
+                  >
+                    <div className="loc-row-icon">
+                      <Icon size={18} />
+                    </div>
+                    <div className="loc-row-body">
+                      <div className="loc-row-title ellipsis">{l.name || '(unnamed)'}</div>
+                      <div className="loc-row-meta">
+                        <span className="loc-row-code">{l.code || '—'}</span>
+                        {l.kind === 'location' && l.branchCode && l.branchCode !== l.code && (
+                          <span className="loc-row-code">{l.branchCode}</span>
+                        )}
+                        <span className="chip" style={{ padding: '1px 7px', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{l.type || meta.type}</span>
                       </div>
-                      {can('locations', 'edit') && <Pencil size={14} className="faint" />}
-                    </button>
-                  );
-                })}
-              </div>
+                      {parentPath && <div className="loc-row-path" title={parentPath}>{parentPath}</div>}
+                    </div>
+                    <div className="loc-row-side">
+                      <span className="loc-row-count">{assetCount} asset{assetCount === 1 ? '' : 's'}</span>
+                      {can('locations', 'edit') && <Pencil size={13} className="faint" />}
+                    </div>
+                  </button>
+                );
+              })
             )}
           </div>
         </div>

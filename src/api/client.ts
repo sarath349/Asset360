@@ -63,7 +63,8 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
 }
 
 // Modules that only the bundled Asset360 API (server/) implements; the cloud AssetAPI returns 404 for them.
-const LOCAL_ONLY = ['/receipts', '/approvallevels', '/maintenance', '/labeltemplates'];
+// Modules historically only on the local Node API. Keep this short — AssetInsurance/Loans/Labels/Maintenance are on cloud Swagger now.
+const LOCAL_ONLY = ['/receipts', '/approvallevels', '/labeltemplates', '/maintenance'];
 
 function errorMessage(data: any, status: number, path = '') {
   if (typeof data === 'string' && data.trim() && data.length < 300) return data.trim();
@@ -73,6 +74,9 @@ function errorMessage(data: any, status: number, path = '') {
     if (first) return String(first);
   }
   if (data?.title) return data.title;
+  if (status === 403) {
+    return 'Access denied (403). You are logged in, but the API does not allow your role to do this. An admin has to give your user a role that has this permission, then log in again.';
+  }
   if (status === 404 && LOCAL_ONLY.some((p) => path.startsWith(p))) {
     return 'This module is not implemented on the connected API yet (the endpoint returns 404). It needs to be added to the backend.';
   }

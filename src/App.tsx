@@ -31,6 +31,11 @@ import ReceiptsPage from './pages/receipts/ReceiptsPage';
 import ReceiptDetailPage from './pages/receipts/ReceiptDetailPage';
 import BulkUploadPage from './pages/assets/BulkUploadPage';
 import ApprovalLevelsPage from './pages/admin/ApprovalLevelsPage';
+import RolesPage from './pages/admin/RolesPage';
+import MaintenancePage from './pages/maintenance/MaintenancePage';
+import MaintenanceDetailPage from './pages/maintenance/MaintenanceDetailPage';
+import InsurancePage from './pages/insurance/InsurancePage';
+import LoansPage from './pages/loans/LoansPage';
 
 function Protected({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -60,7 +65,6 @@ function Home() {
 // Modules the AssetAPI does not provide endpoints for yet.
 const COMING_SOON: { path: string; title: string }[] = [
   { path: 'notifications', title: 'Notifications & Alerts' },
-  { path: 'roles', title: 'Roles & Permissions' },
   { path: 'settings', title: 'Settings' },
   { path: 'profile', title: 'My Profile' },
 ];
@@ -95,11 +99,16 @@ export default function App() {
         <Route path="receipts/:id" element={<Guard module="procurement"><ReceiptDetailPage /></Guard>} />
         <Route path="contracts" element={<Guard module="contracts"><ContractsPage /></Guard>} />
         <Route path="contracts/:id" element={<Guard module="contracts"><ContractDetailPage /></Guard>} />
+        <Route path="maintenance" element={<Guard module="maintenance"><MaintenancePage /></Guard>} />
+        <Route path="maintenance/:id" element={<Guard module="maintenance"><MaintenanceDetailPage /></Guard>} />
+        <Route path="insurance" element={<Guard module="insurance"><InsurancePage /></Guard>} />
+        <Route path="loans" element={<Guard module="loans"><LoansPage /></Guard>} />
         <Route path="disposal" element={<Guard module="disposal"><DisposalPage /></Guard>} />
         <Route path="disposal/:id" element={<Guard module="disposal"><DisposalDetailPage /></Guard>} />
         <Route path="depreciation" element={<Guard module="depreciation"><DepreciationPage /></Guard>} />
         <Route path="tags" element={<Guard module="tags"><TagsPage /></Guard>} />
         <Route path="approval-levels" element={<Guard module="roles"><ApprovalLevelsPage /></Guard>} />
+        <Route path="roles" element={<Guard module="roles"><RolesPage /></Guard>} />
         <Route path="reports" element={<Guard module="reports"><ReportsPage /></Guard>} />
         <Route path="organization" element={<Guard module="organization"><OrganizationPage /></Guard>} />
         <Route path="users" element={<Guard module="users"><UsersPage /></Guard>} />

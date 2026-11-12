@@ -19,6 +19,9 @@ import maintenanceRoutes from './routes/maintenance.js';
 import receiptsRoutes from './routes/receipts.js';
 import approvalLevelsRoutes from './routes/approvalLevels.js';
 import labelTemplatesRoutes from './routes/labelTemplates.js';
+import assetLabelsRoutes from './routes/assetLabels.js';
+import loansRoutes from './routes/loans.js';
+import insuranceRoutes from './routes/insurance.js';
 import { getDb, publicDoc } from './db.js';
 import { Router } from 'express';
 
@@ -112,9 +115,13 @@ export function createApp({ staticDir, uploadsDir } = {}) {
   app.use('/api/assetdisposals', disposalsRoutes);
   app.use('/api/assetcontracts', contractsRoutes);
   app.use('/api/maintenance', maintenanceRoutes);
+  app.use('/api/assetmaintenance', maintenanceRoutes);
   app.use('/api/receipts', receiptsRoutes);
   app.use('/api/approvallevels', approvalLevelsRoutes);
   app.use('/api/labeltemplates', labelTemplatesRoutes);
+  app.use('/api/assetlabels', assetLabelsRoutes);
+  app.use('/api/assetloans', loansRoutes);
+  app.use('/api/assetinsurance', insuranceRoutes);
   app.use('/api/dashboard', dashboardRoutes);
   app.use('/api/reports', reportsRoutes);
 

@@ -36,8 +36,8 @@ const monthLabel = (m: string) => {
   return Number.isNaN(d.getTime()) ? m : d.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
 };
 
-function MonthlyBars({ data, color, name, currency }: { data: ChartPoint[]; color: string; name: string; currency?: boolean }) {
-  if (!data?.length) return <Empty title="Nothing scheduled" />;
+function MonthlyBars({ data, color, name, currency, emptyTitle = 'No data' }: { data: ChartPoint[]; color: string; name: string; currency?: boolean; emptyTitle?: string }) {
+  if (!data?.length) return <Empty title={emptyTitle} />;
   const max = Math.max(...data.map((d) => d.value || 0), 0);
   // Counts must stay whole numbers — with small values Recharts otherwise ticks 0.25 / 0.5 / 0.75.
   const countDomain: [number, number] | undefined = currency ? undefined : [0, Math.max(4, Math.ceil(max))];
@@ -171,8 +171,15 @@ export default function DashboardPage() {
   const k = dash.summary;
   // Requests still needing action: awaiting approval, or approved but not yet carried out.
   const pendingDisposals = allDisposals.filter((d) => ['pending', 'approved'].includes(disposalStage(d)));
+  const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+  const isCurrentMonth = (raw?: string | null) => Boolean(raw && String(raw).slice(0, 7) === currentMonth);
+  const totalDisposalsThisMonth = allDisposals.filter((d) => {
+    const when = d.disposalDate || d.approvalDate || d.requestDate || d.createdDate;
+    return isCurrentMonth(when);
+  }).length;
   const warrantyChart = mergeMonths(dash.warrantyExpiryByMonth, upcomingByMonth(assets.map((a) => a.warrantyEndDate)));
   const amcChart = mergeMonths(dash.amcExpiryByMonth, upcomingByMonth(assets.map((a) => a.amcEndDate)));
+  const depreciationThisMonth = (dash.depreciationByMonth || []).filter((p) => p.label === currentMonth);
   const within30 = (d?: string | null) => {
     const n = daysUntil(d);
     return n !== null && n >= 0 && n <= 30;
@@ -234,7 +241,7 @@ export default function DashboardPage() {
         <ExpiryCard title="Insurance Expiry" icon={<Shield size={16} />} buckets={insuranceBuckets} to="/contracts?tab=warranty" />
         <Kpi label="Total Assets" value={num(k.totalAssets)} hint="Asset count" icon={<Boxes size={20} />} toneName="green" to="/assets" />
         <ExpiryCard title="Warranty Expiry" icon={<ShieldAlert size={16} />} buckets={warrantyBuckets} to="/contracts?tab=warranty" />
-        <Kpi label="Disposal Count" value={num(pendingDisposals.length)} hint={`${num(allDisposals.length)} total requests`} icon={<Trash2 size={20} />} toneName="amber" to="/disposal" />
+        <Kpi label="Total Disposal" value={num(totalDisposalsThisMonth)} hint={`${num(allDisposals.length)} all-time · current month`} icon={<Trash2 size={20} />} toneName="amber" to="/disposal" />
       </div>
 
       <div className="grid grid-kpi mt">
@@ -244,7 +251,7 @@ export default function DashboardPage() {
         <Kpi label="Missing Assets" value={num(k.missingAssets)} icon={<MapPinOff size={20} />} toneName="red" to="/assets?status=Missing" />
         <Kpi label="Warranty Expiring" value={num(warrantyExpiring)} hint="Next 30 days" icon={<ShieldAlert size={20} />} toneName="amber" to="/contracts?tab=warranty" />
         <Kpi label="AMC Expiring" value={num(amcExpiring)} hint="Next 30 days" icon={<CalendarClock size={20} />} toneName="cyan" to="/contracts?tab=alerts" />
-        <Kpi label="Open Disposals" value={num(pendingDisposals.length)} hint={`${num(openAudits.length)} audits open`} icon={<FileWarning size={20} />} toneName="slate" to="/disposal" />
+        <Kpi label="Total Disposal" value={num(totalDisposalsThisMonth)} hint={`${num(pendingDisposals.length)} open · ${num(openAudits.length)} audits open`} icon={<FileWarning size={20} />} toneName="slate" to="/disposal" />
       </div>
 
       <div className="grid grid-2 mt">
@@ -359,8 +366,8 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-3 mt">
-        <Card title="Depreciation" subtitle="Posted per month">
-          <MonthlyBars data={dash.depreciationByMonth} color="#8b5cf6" name="Depreciation" currency />
+        <Card title="Depreciation" subtitle="Current month">
+          <MonthlyBars data={depreciationThisMonth} color="#8b5cf6" name="Depreciation" currency emptyTitle="No data" />
         </Card>
         <Card title="Expiring Soon" subtitle="Warranty, AMC & insurance in 60 days" bodyClass="tight">
           {expiring.length ? (
@@ -405,7 +412,7 @@ export default function DashboardPage() {
 
       {(pendingDisposals.length > 0 || openAudits.length > 0) && (
         <div className="grid grid-2 mt">
-          <Card title="Open disposals" bodyClass="tight" actions={<Link to="/disposal" className="small">View all</Link>}>
+          <Card title="Total disposals" bodyClass="tight" actions={<Link to="/disposal" className="small">View all</Link>}>
             {pendingDisposals.length ? (
               pendingDisposals.slice(0, 6).map((d) => (
                 <Link to={`/disposal/${d.disposalId}`} key={d.disposalId} className="list-item" style={{ color: 'inherit', textDecoration: 'none' }}>

@@ -4,6 +4,7 @@ import { CheckCircle2, Play, ScanLine } from 'lucide-react';
 import { auditApi, reportApi } from '../../api/assetApi';
 import { useFetch } from '../../lib/hooks';
 import { date, dateTime } from '../../lib/format';
+import { extractCode } from '../../lib/assetLookup';
 import { useAuth } from '../../context/AuthContext';
 import { useNames } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
@@ -144,7 +145,8 @@ function ScanPanel({ auditId, running, onScanned }: { auditId: number; running: 
   const [results, setResults] = useState<{ code: string; at: string; result: any; ok: boolean }[]>([]);
 
   const scan = async (raw: string) => {
-    const code = raw.trim();
+    // Printed QR labels hold the portal scan URL; the audit API expects the bare asset code.
+    const code = extractCode(raw);
     if (!code || busy) return;
     if (!locationId) return toast.error('Select the location you are scanning at');
     setBusy(true);

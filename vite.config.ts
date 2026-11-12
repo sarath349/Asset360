@@ -1,11 +1,7 @@
 import dns from 'node:dns';
 import https from 'node:https';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
-
-// Cloud AssetAPI (swagger) by default. Override with VITE_API_TARGET=http://127.0.0.1:5050
-// to use the local server/ API (which additionally implements receipts and approval levels).
-const API = process.env.VITE_API_TARGET || 'https://assetapi.secureworldme.com';
 
 // Falls back to public / authoritative DNS when the system resolver cannot find the API host
 // (e.g. a stale negative cache right after a new DNS record is published).
@@ -39,29 +35,38 @@ const lookup = ((host: string, opts: any, cb: any) =>
       () => cb(err)
     );
   })) as any;
-const agent = API.startsWith('https') ? new https.Agent({ lookup }) : undefined;
 
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    port: 5180,
-    strictPort: true,
-    host: true,
-    proxy: {
-      '/api': { target: API, changeOrigin: true, agent },
-      '/uploads': { target: API, changeOrigin: true, agent },
+export default defineConfig(({ mode }) => {
+  // loadEnv reads .env / .env.local — process.env alone does not see those files in vite.config.
+  const env = loadEnv(mode, process.cwd(), '');
+  // Cloud AssetAPI (swagger) by default. Override with VITE_API_TARGET=http://127.0.0.1:5050
+  // to use the local server/ API (which additionally implements receipts and approval levels).
+  const API = env.VITE_API_TARGET || process.env.VITE_API_TARGET || 'https://assetapi.secureworldme.com';
+  const agent = API.startsWith('https') ? new https.Agent({ lookup }) : undefined;
+  console.log(`[vite] API proxy → ${API}`);
+
+  return {
+    plugins: [react()],
+    server: {
+      port: 5180,
+      strictPort: true,
+      host: true,
+      proxy: {
+        '/api': { target: API, changeOrigin: true, agent },
+        '/uploads': { target: API, changeOrigin: true, agent },
+      },
     },
-  },
-  build: {
-    chunkSizeWarningLimit: 1500,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          react: ['react', 'react-dom', 'react-router-dom'],
-          charts: ['recharts'],
-          scanner: ['html5-qrcode', 'qrcode', 'jsbarcode'],
+    build: {
+      chunkSizeWarningLimit: 1500,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            react: ['react', 'react-dom', 'react-router-dom'],
+            charts: ['recharts'],
+            scanner: ['html5-qrcode', 'qrcode', 'jsbarcode'],
+          },
         },
       },
     },
-  },
+  };
 });

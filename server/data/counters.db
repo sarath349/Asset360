@@ -1,0 +1,12 @@
+{"_id":"users","seq":1}
+{"_id":"categories","seq":1}
+{"_id":"subcategories","seq":1}
+{"_id":"assettypes","seq":1}
+{"_id":"locations","seq":1}
+{"_id":"approvalLevels","seq":1}
+{"_id":"approvalLevels","seq":2}
+{"_id":"labelTemplates","seq":1}
+{"_id":"locations","seq":2}
+{"_id":"locations","seq":3}
+{"_id":"sublocations","seq":1}
+{"_id":"sublocations","seq":2}

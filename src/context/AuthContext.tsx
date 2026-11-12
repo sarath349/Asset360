@@ -32,7 +32,7 @@ interface AuthState {
 // This controls what the portal shows; the API itself must still enforce permissions.
 const MODULES = [
   'dashboard', 'assets', 'categories', 'locations', 'lifecycle', 'organization', 'transfers', 'tags', 'audits', 'contracts', 'maintenance',
-  'procurement', 'disposal', 'depreciation', 'reports', 'notifications', 'users', 'roles', 'settings', 'profile', 'mobile',
+  'insurance', 'loans', 'procurement', 'disposal', 'depreciation', 'reports', 'notifications', 'users', 'roles', 'settings', 'profile', 'mobile',
 ];
 const ALL_ACTIONS = ['view', 'create', 'edit', 'delete', 'export', 'approve'];
 
@@ -50,12 +50,12 @@ const ROLE_PERMISSIONS: Record<string, Permissions> = {
   'asset manager': grant({ ...everything, users: [] }),
   'facility manager': grant({
     tags: V, dashboard: V, assets: [...VCE, 'export'], categories: VCE, locations: VCE, lifecycle: V, organization: V, transfers: VC, audits: VCE, contracts: VCE,
-    maintenance: VCE, procurement: [...VCE, 'approve'], disposal: [...VC, 'approve'], depreciation: V, reports: VX, roles: V,
+    maintenance: VCE, insurance: VCE, loans: [...VCE, 'approve'], procurement: [...VCE, 'approve'], disposal: [...VC, 'approve'], depreciation: V, reports: VX, roles: V,
   }),
-  'department manager': grant({ dashboard: V, assets: VX, lifecycle: V, organization: V, transfers: VC, maintenance: VC, disposal: VC, reports: VX }),
-  technician: grant({ tags: V, dashboard: V, assets: V, lifecycle: V, audits: ['view', 'edit'], contracts: ['view', 'edit'], maintenance: VCE }),
+  'department manager': grant({ dashboard: V, assets: VX, lifecycle: V, organization: V, transfers: VC, maintenance: VC, insurance: V, loans: VC, disposal: VC, reports: VX }),
+  technician: grant({ tags: V, dashboard: V, assets: V, lifecycle: V, audits: ['view', 'edit'], contracts: ['view', 'edit'], maintenance: VCE, insurance: V }),
   auditor: grant({ tags: V, dashboard: V, assets: VX, locations: V, lifecycle: V, audits: [...VCE, 'export'], reports: VX }),
-  employee: grant({ assets: V, lifecycle: V }),
+  employee: grant({ assets: V, lifecycle: V, loans: VC }),
 };
 
 // A user with no role (the seeded admin account) keeps full access; unknown roles get read-only asset access.

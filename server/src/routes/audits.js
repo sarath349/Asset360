@@ -16,6 +16,8 @@ router.post('/create', async (req, res) => {
     auditName: req.body.auditName || `Audit ${id}`,
     siteId: Number(req.body.siteId) || 0,
     areaId: req.body.areaId != null ? Number(req.body.areaId) : null,
+    categoryId: req.body.categoryId != null ? Number(req.body.categoryId) : null,
+    subCategoryId: req.body.subCategoryId != null ? Number(req.body.subCategoryId) : null,
     startDate: req.body.startDate || nowIso(),
     endDate: req.body.endDate || null,
     assignedTo: req.body.assignedTo != null ? Number(req.body.assignedTo) : null,
@@ -40,7 +42,11 @@ router.post('/start/:auditId', async (req, res) => {
     ? { $or: [{ locationId: audit.areaId }, { subLocationId: audit.areaId }] }
     : { $or: [{ locationId: audit.siteId }, { subLocationId: audit.siteId }] };
 
-  const assets = await db.collection('assets').find(locationFilter).toArray();
+  const filter = { ...locationFilter };
+  if (audit.categoryId) filter.categoryId = Number(audit.categoryId);
+  if (audit.subCategoryId) filter.subCategoryId = Number(audit.subCategoryId);
+
+  const assets = await db.collection('assets').find(filter).toArray();
   await db.collection('auditItems').deleteMany({ auditId });
   if (assets.length) {
     await db.collection('auditItems').insertMany(

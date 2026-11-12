@@ -29,15 +29,18 @@ export default function DisposalDetailPage() {
   const names = useNames();
   const { data, loading, error, reload } = useFetch(async () => {
     const d = await disposalApi.get(id!);
-    const asset = await assetApi.get(d.assetId).catch(() => null);
-    const levels = await approvalLevelApi.list('disposal').catch(() => []);
-    return { d, asset, levels: levels.filter((l) => l.isActive).sort((a, b) => a.stepOrder - b.stepOrder) };
+    const [asset, levels, history] = await Promise.all([
+      assetApi.get(d.assetId).catch(() => null),
+      approvalLevelApi.list('disposal').catch(() => []),
+      disposalApi.approvalHistory(id!).catch(() => []),
+    ]);
+    return { d, asset, levels: levels.filter((l) => l.isActive).sort((a, b) => a.stepOrder - b.stepOrder), history };
   }, [id]);
   const [modal, setModal] = useState<'approve' | 'reject' | 'complete' | null>(null);
 
   if (loading && !data) return <Loading />;
   if (error || !data) return <ErrorState message={error || 'Disposal request not found'} onRetry={reload} />;
-  const { d, asset, levels } = data;
+  const { d, asset, levels, history } = data;
   const stage = disposalStage(d);
   const requiredRole = levels[0]?.role || null;
   const roleOk = !requiredRole || !user?.role || user.role.trim().toLowerCase() === requiredRole.trim().toLowerCase() || /admin/i.test(user.role);
@@ -127,6 +130,21 @@ export default function DisposalDetailPage() {
                 ['Remarks', d.approvalRemarks],
               ]}
             />
+            {!!history?.length && (
+              <div className="mt">
+                <div className="kpi-label mb" style={{ marginBottom: 8 }}>Approval history</div>
+                <div className="stack" style={{ gap: 8 }}>
+                  {history.map((h) => (
+                    <div key={h.historyId} className="list-item" style={{ padding: '8px 0' }}>
+                      <div style={{ flex: 1 }}>
+                        <div className="cell-main">{h.action} · {h.status}</div>
+                        <div className="cell-sub">{names.user(h.actedBy)} · {dateTime(h.actedDate)}{h.remarks ? ` · ${h.remarks}` : ''}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </Card>
           <Card title="Disposal">
             <KV

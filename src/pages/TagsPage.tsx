@@ -60,7 +60,39 @@ export default function TagsPage() {
   const print = async () => {
     try {
       const tpl = activeTemplate;
+      const job = await labelTemplateApi
+        .printBatch({
+          templateId: tpl?.templateId,
+          assetIds: chosen.map((a) => a.assetId),
+          format: 'zpl',
+        })
+        .catch(() => null);
       await printLabels(chosen.map(labelOf), tpl?.mode || mode, activeBranch?.name, tpl || undefined);
+      if (job?.jobId) {
+        await labelTemplateApi.markPrinted(job.jobId).catch(() => undefined);
+        toast.success(`Printed · job #${job.jobId} recorded`);
+      }
+    } catch (err) {
+      toast.error(err);
+    }
+  };
+
+  const downloadBatch = async (format: 'zpl' | 'csv') => {
+    try {
+      const tpl = activeTemplate;
+      const job = await labelTemplateApi.printBatch({
+        templateId: tpl?.templateId,
+        assetIds: chosen.map((a) => a.assetId),
+        format,
+      });
+      const blob = new Blob([job.payload || ''], { type: format === 'csv' ? 'text/csv' : 'application/zpl' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `label-job-${job.jobId}.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`Downloaded ${format.toUpperCase()} for job #${job.jobId}`);
     } catch (err) {
       toast.error(err);
     }
@@ -109,6 +141,12 @@ export default function TagsPage() {
               }
             >
               <Settings2 size={16} /> Templates
+            </button>
+            <button className="btn" disabled={!chosen.length} onClick={() => downloadBatch('zpl')}>
+              Download ZPL
+            </button>
+            <button className="btn" disabled={!chosen.length} onClick={() => downloadBatch('csv')}>
+              Download CSV
             </button>
             <button className="btn btn-primary" disabled={!chosen.length} onClick={print}>
               <Printer size={16} /> Print {chosen.length || ''} label{chosen.length === 1 ? '' : 's'}
